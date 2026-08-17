@@ -1,0 +1,9 @@
+{
+  "name": "esp32-audio-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check public/app.js"
+  }
+}

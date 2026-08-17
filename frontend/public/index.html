@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32 Audio Control</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 760px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    label,
+    button {
+      display: block;
+      margin-top: .75rem;
+    }
+
+    button {
+      padding: .5rem .8rem;
+    }
+
+    .controls {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+    }
+
+    #message {
+      min-height: 1.5rem;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>ESP32 Audio Control</h1>
+  <p id="message" role="status"></p>
+  <label>Device ID <input id="deviceId" value="esp32_01"></label>
+  <label>Audio <select id="audioList">
+      <option value="">Loading…</option>
+    </select></label>
+  <label>Text-to-Speech <textarea id="ttsText" rows="3" placeholder="Optional text to synthesize"></textarea></label>
+  <button id="tts">Generate TTS</button>
+  <label>Upload MP3/WAV <input id="upload" type="file" accept="audio/mpeg,audio/wav,.mp3,.wav"></label>
+  <div class="controls">
+    <button id="play">PLAY</button>
+    <button id="stop">STOP</button>
+    <button id="pause">PAUSE</button>
+  </div>
+  <label>Volume <input id="volume" type="range" min="0" max="100" value="70"> <span id="volumeValue">70</span></label>
+  <h2>Device status</h2>
+  <pre id="status">Loading…</pre>
+  <script src="/app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "esp32-audio-system",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "check": "uv run python verify-run.py",
+    "start": "node verify-start.js"
+  }
+}
