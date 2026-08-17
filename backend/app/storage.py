@@ -94,3 +94,46 @@ class AudioRepository:
             for path in self.storage_path.glob("audio_*"):
                 path.unlink(missing_ok=True)
             self._write_records({})
+    
+    def save_bytes(
+        self,
+        payload: bytes,
+        filename: str,
+        audio_format: str,
+        metadata: dict | None = None,
+    ) -> dict:
+        if not payload:
+            raise ValueError("Audio payload is empty")
+
+        if len(payload) > self.max_audio_size:
+            raise ValueError("Audio file exceeds the maximum allowed size")
+
+        if not filename:
+            raise ValueError("Filename is required")
+
+        safe_filename = Path(filename).name
+
+        if safe_filename != filename:
+            raise ValueError("Invalid filename")
+
+        destination = self.storage_path / safe_filename
+
+        destination.write_bytes(payload)
+
+        record = {
+            "id": safe_filename.rsplit(".", 1)[0],
+            "audio_id": safe_filename.rsplit(".", 1)[0],
+            "filename": safe_filename,
+            "original_filename": safe_filename,
+            "format": audio_format,
+            "size": len(payload),
+            "status": "READY",
+            **(metadata or {}),
+        }
+
+        with self._lock:
+            records = self._read_records()
+            records[record["id"]] = record
+            self._write_records(records)
+
+        return record
