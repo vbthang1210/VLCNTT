@@ -80,3 +80,23 @@ def test_completed_handler_failure_does_not_lose_saved_audio(tmp_path):
 
     assert repo.path_for(record["audio_id"]).is_file()
     assert service.has_active_session("esp32_01") is False
+
+
+def test_expired_incomplete_session_is_replaced_by_next_start(tmp_path):
+    repo = repository(tmp_path)
+    service = AudioStreamService(
+        repo,
+        session_timeout=5,
+    )
+
+    first = service.start(
+        start_payload(session_id="voice_stale")
+    )
+    first.last_packet_at -= 6
+
+    replacement = service.start(
+        start_payload(session_id="voice_new")
+    )
+
+    assert replacement.session_id == "voice_new"
+    assert service.sessions["esp32_01"] is replacement
