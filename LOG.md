@@ -199,3 +199,37 @@
   - `LED_PIN=2` is only a development default; replace it with the real lamp/relay GPIO if hardware wiring differs.
   - Physical LIGHT command acknowledgement remains NOT VERIFIED until the ESP32 is flashed and connected to Mosquitto.
   - Next implementation step: INMP441 capture -> MQTT `audio/start`, `audio/data`, `audio/end`.
+
+### 2026-08-18 - INMP441 microphone to MQTT audio pipeline
+
+- Đã làm:
+  - Added `MicrophoneStreamer` using Arduino-ESP32 I2S RX on I2S1 so the microphone path does not use the speaker's I2S controller.
+  - Added INMP441 development wiring defaults: BCLK GPIO32, WS GPIO33, SD GPIO34, L/R tied to GND (left slot).
+  - Captures 1-second windows at 16 kHz and converts the INMP441 32-bit receive word to mono PCM16 for Backend/AI input.
+  - Extended `MqttManager` with binary-safe `audio/start`, `audio/data`, and `audio/end` publishers.
+  - Uses QoS 1 for START/END control frames and QoS 0 for PCM DATA chunks.
+  - Voice capture is disabled while speaker playback is active to reduce feedback and avoid the model hearing the device's own speaker output.
+  - Incomplete capture windows do not publish `audio/end`, so truncated audio is not sent to AI inference.
+  - Backend now automatically drops an expired incomplete audio session when the same device starts a later session.
+  - Added a regression test for replacing an expired incomplete session.
+  - Documented INMP441 wiring and MQTT audio contract in `main/README.md`.
+
+- File đã sửa/thêm:
+  - `main/config.h`
+  - `main/mqtt_manager.h`
+  - `main/mqtt_manager.cpp`
+  - `main/microphone_streamer.h`
+  - `main/microphone_streamer.cpp`
+  - `main/main.ino`
+  - `main/README.md`
+  - `backend/app/services/audio_stream_service.py`
+  - `backend/tests/test_audio_completed_hook.py`
+
+- Test:
+  - Source-level integration and regression tests were added, but Arduino compile and hardware capture cannot be executed inside the assistant runtime.
+  - Required local verification: Backend pytest + Arduino compile + physical serial/MQTT observation.
+
+- Còn thiếu / lưu ý:
+  - A valid `backend/storage/models/keyword_cnn.pt` is still required before real voice inference can succeed.
+  - INMP441 wiring/polarity and PCM amplitude must be verified on the physical board.
+  - Full `voice -> MQTT audio -> Backend WAV -> AI -> LIGHT -> ESP32 LED` remains NOT VERIFIED until model checkpoint and hardware tests pass.
