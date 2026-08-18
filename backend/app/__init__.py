@@ -8,6 +8,7 @@ from .storage import AudioRepository
 from .routes.audio_routes import audio_blueprint
 from .routes.device_routes import device_blueprint
 from .services import (
+    AIService,
     AudioService,
     AudioStreamService,
     CloudService,
@@ -26,6 +27,7 @@ def create_app(overrides: dict | None = None) -> Flask:
     - HTTP API
     - Audio storage
     - Audio streaming from ESP32
+    - AI keyword inference
     - MQTT communication
     - Device state management
     - Cloud metadata
@@ -123,6 +125,15 @@ def create_app(overrides: dict | None = None) -> Flask:
     )
 
     # =========================================================
+    # AI KEYWORD MODEL
+    # =========================================================
+
+    # AIService intentionally does not crash the whole backend when the
+    # checkpoint is missing or invalid. Its ready/error state is exposed
+    # through /health and inference will reject requests until it is ready.
+    app.extensions["ai_service"] = AIService()
+
+    # =========================================================
     # DEVICE STATE
     # =========================================================
 
@@ -180,12 +191,18 @@ def create_app(overrides: dict | None = None) -> Flask:
     @app.get("/health")
     def health():
         mqtt = app.extensions["mqtt_service"]
+        ai = app.extensions["ai_service"]
+        ai_status = ai.status()
 
         return {
             "success": True,
             "data": {
                 "service": "backend",
                 "mqtt_connected": mqtt.is_connected(),
+                "ai_ready": ai_status["ready"],
+                "ai_device": ai_status["device"],
+                "ai_model_version": ai_status["model_version"],
+                "ai_error_code": ai_status["error_code"],
             },
             "message": "OK",
         }
