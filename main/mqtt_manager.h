@@ -2,8 +2,8 @@
 #define MQTT_MANAGER_H
 
 #include <Arduino.h>
-#include <WiFiClient.h>
 #include <ArduinoMqttClient.h>
+#include <WiFiClient.h>
 
 class MqttManager {
  public:
@@ -15,9 +15,15 @@ class MqttManager {
              CommandCallback callback);
   void update();
   bool isConnected();
+
   bool publishStatus(const char* payload);
   bool publishEvent(const char* payload);
   bool publishError(const char* payload);
+
+  bool publishAudioStart(const char* payload);
+  bool publishAudioData(const uint8_t* payload, size_t length);
+  bool publishAudioEnd(const char* payload);
+
   void receiveCommand(int messageSize);
 
  private:
@@ -27,10 +33,15 @@ class MqttManager {
   const char* deviceId_ = nullptr;
   const char* username_ = nullptr;
   const char* password_ = nullptr;
+
   char commandTopic_[96] = {};
   char statusTopic_[96] = {};
   char eventTopic_[96] = {};
   char errorTopic_[96] = {};
+  char audioStartTopic_[96] = {};
+  char audioDataTopic_[96] = {};
+  char audioEndTopic_[96] = {};
+
   CommandCallback callback_ = nullptr;
   uint32_t nextAttemptAt_ = 0;
   uint32_t reconnectDelayMs_ = 1000;
@@ -38,7 +49,10 @@ class MqttManager {
   bool started_ = false;
 
   void connectIfDue();
-  bool publish(const char* topic, const char* payload, bool retained);
+  bool publishText(const char* topic, const char* payload,
+                   bool retained, int qos);
+  bool publishBytes(const char* topic, const uint8_t* payload,
+                    size_t length, bool retained, int qos);
 };
 
 #endif
