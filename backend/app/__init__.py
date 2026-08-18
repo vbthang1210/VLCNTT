@@ -20,79 +20,31 @@ from .services import (
 
 
 def create_app(overrides: dict | None = None) -> Flask:
-    """
-    Create and configure the Flask application.
-
-    The application is responsible for:
-
-    - HTTP API
-    - Audio storage
-    - Audio streaming from ESP32
-    - AI keyword inference
-    - MQTT communication
-    - Device state management
-    - Cloud metadata
-    - Notifications
-    - Text-to-speech
-    """
-
-    # =========================================================
-    # SETTINGS
-    # =========================================================
+    """Create and configure the Flask application."""
 
     settings = Settings.from_env(overrides or {})
     settings.ensure_directories()
 
-    # =========================================================
-    # FLASK APPLICATION
-    # =========================================================
-
     app = Flask(__name__)
-
     app.config["SETTINGS"] = settings
-
     app.config["TESTING"] = (
-        str(
-            (overrides or {}).get(
-                "TESTING",
-                "false",
-            )
-        ).lower()
+        str((overrides or {}).get("TESTING", "false")).lower()
         == "true"
     )
-
-    # =========================================================
-    # STORAGE
-    # =========================================================
 
     repository = AudioRepository(
         settings.storage_path,
         settings.metadata_path,
         settings.max_audio_size,
     )
-
     app.extensions["audio_repository"] = repository
 
-    # =========================================================
-    # AUDIO SERVICES
-    # =========================================================
-
-    app.extensions["audio_service"] = AudioService(
-        repository
-    )
-
-    app.extensions["audio_stream_service"] = AudioStreamService(
-        repository
-    )
-
-    # =========================================================
-    # METADATA / CLOUD
-    # =========================================================
+    app.extensions["audio_service"] = AudioService(repository)
+    app.extensions["audio_stream_service"] = AudioStreamService(repository)
 
     app.extensions["metadata_service"] = MetadataService(
         settings.cloud_provider
     )
-
     app.extensions["cloud_service"] = CloudService(
         settings.cloud_provider,
         settings.cloud_project_id,
@@ -100,20 +52,12 @@ def create_app(overrides: dict | None = None) -> Flask:
         settings.cloud_collection,
     )
 
-    # =========================================================
-    # NOTIFICATION
-    # =========================================================
-
     app.extensions["notification_service"] = NotificationService(
         settings.notification_provider,
         settings.notification_project_id,
         settings.notification_access_token,
         settings.notification_device_token,
     )
-
-    # =========================================================
-    # TEXT TO SPEECH
-    # =========================================================
 
     app.extensions["tts_service"] = TTSService(
         settings.tts_provider,
@@ -125,96 +69,50 @@ def create_app(overrides: dict | None = None) -> Flask:
         settings.tts_response_format,
     )
 
-    # =========================================================
-    # AI KEYWORD MODEL
-    # =========================================================
-
-    # AIService intentionally does not crash the whole backend when the
-    # checkpoint is missing or invalid. Its ready/error state is exposed
-    # through /health and inference will reject requests until it is ready.
+    # The backend remains available even when the model file is missing.
+    # AIService exposes its ready/error state through /health.
     app.extensions["ai_service"] = AIService()
 
-    # =========================================================
-    # DEVICE STATE
-    # =========================================================
-
     app.extensions["device_state"] = DeviceStateStore()
-
-    # =========================================================
-    # MQTT
-    # =========================================================
 
     app.extensions["mqtt_service"] = MqttService(
         settings=settings,
         device_state=app.extensions["device_state"],
-        notification_service=app.extensions[
-            "notification_service"
-        ],
-        cloud_service=app.extensions[
-            "cloud_service"
-        ],
-        audio_stream_service=app.extensions[
-            "audio_stream_service"
-        ],
+        notification_service=app.extensions["notification_service"],
+        cloud_service=app.extensions["cloud_service"],
+        audio_stream_service=app.extensions["audio_stream_service"],
     )
-
-    # =========================================================
-    # VOICE AI -> DEVICE COMMAND
-    # =========================================================
 
     app.extensions["voice_command_service"] = VoiceCommandService(
         ai_service=app.extensions["ai_service"],
         audio_repository=repository,
         mqtt_service=app.extensions["mqtt_service"],
-        device_state=app.extensions["device_state"],
     )
 
     app.extensions["audio_stream_service"].set_completed_handler(
         app.extensions["voice_command_service"].process
     )
 
-    # =========================================================
-    # ROUTES
-    # =========================================================
-
     app.register_blueprint(audio_blueprint)
     app.register_blueprint(device_blueprint)
 
-    # =========================================================
-    # CORS
-    # =========================================================
-
     @app.after_request
     def add_cors(response):
-        response.headers[
-            "Access-Control-Allow-Origin"
-        ] = settings.cors_origin
-
-        response.headers[
-            "Access-Control-Allow-Headers"
-        ] = "Content-Type"
-
-        response.headers[
-            "Access-Control-Allow-Methods"
-        ] = "GET,POST,OPTIONS"
-
+        response.headers["Access-Control-Allow-Origin"] = settings.cors_origin
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
         return response
-
-    # =========================================================
-    # HEALTH CHECK
-    # =========================================================
 
     @app.get("/health")
     def health():
-        mqtt = app.extensions["mqtt_service"]
-        ai = app.extensions["ai_service"]
-        ai_status = ai.status()
+        mqtt_service = app.extensions["mqtt_service"]
+        ai_status = app.extensions["ai_service"].status()
 
         return {
             "success": True,
             "data": {
                 "service": "backend",
-                "mqtt_connected": mqtt.is_connected(),
+                "mqtt_connected": mqtt_service.is_connected(),
                 "ai_ready": ai_status["ready"],
                 "ai_device": ai_status["device"],
                 "ai_model_version": ai_status["model_version"],
@@ -223,14 +121,7 @@ def create_app(overrides: dict | None = None) -> Flask:
             "message": "OK",
         }
 
-    # =========================================================
-    # START MQTT
-    # =========================================================
-
-    if (
-        settings.mqtt_enabled
-        and not app.config["TESTING"]
-    ):
+    if settings.mqtt_enabled and not app.config["TESTING"]:
         app.extensions["mqtt_service"].start()
 
     return app
