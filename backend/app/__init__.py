@@ -15,6 +15,7 @@ from .services import (
     MetadataService,
     NotificationService,
     TTSService,
+    VoiceCommandService,
 )
 
 
@@ -155,6 +156,21 @@ def create_app(overrides: dict | None = None) -> Flask:
         audio_stream_service=app.extensions[
             "audio_stream_service"
         ],
+    )
+
+    # =========================================================
+    # VOICE AI -> DEVICE COMMAND
+    # =========================================================
+
+    app.extensions["voice_command_service"] = VoiceCommandService(
+        ai_service=app.extensions["ai_service"],
+        audio_repository=repository,
+        mqtt_service=app.extensions["mqtt_service"],
+        device_state=app.extensions["device_state"],
+    )
+
+    app.extensions["audio_stream_service"].set_completed_handler(
+        app.extensions["voice_command_service"].process
     )
 
     # =========================================================
