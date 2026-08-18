@@ -35,12 +35,10 @@ class VoiceCommandService:
         ai_service,
         audio_repository,
         mqtt_service,
-        device_state,
     ) -> None:
         self.ai_service = ai_service
         self.audio_repository = audio_repository
         self.mqtt_service = mqtt_service
-        self.device_state = device_state
 
     def process(self, record: dict[str, Any]) -> VoiceCommandResult:
         device_id = str(record.get("device_id") or "")
@@ -172,11 +170,6 @@ class VoiceCommandService:
                 published=False,
                 reason="MQTT_UNAVAILABLE",
             )
-
-        self.device_state.set_current_request(
-            device_id,
-            request_id,
-        )
 
         logger.info(
             "[VOICE] LIGHT command published | device=%s | session=%s | state=%s | request_id=%s",
