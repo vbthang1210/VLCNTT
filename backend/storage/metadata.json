@@ -15,5 +15,57 @@
     "sample_count": 78848,
     "recorded_at": "2026-08-18T14:46:57.652798+00:00",
     "size": 157740
+  },
+  "audio_5ea110b6": {
+    "id": "audio_5ea110b6",
+    "audio_id": "audio_5ea110b6",
+    "filename": "audio_5ea110b6.wav",
+    "original_filename": "rec_ca0a8cfd.wav",
+    "format": "wav",
+    "size": 157740,
+    "status": "READY",
+    "duration": 4.928,
+    "sample_rate": 16000,
+    "channels": 1,
+    "bits_per_sample": 16
+  },
+  "audio_8c3033e0": {
+    "id": "audio_8c3033e0",
+    "audio_id": "audio_8c3033e0",
+    "filename": "audio_8c3033e0.wav",
+    "original_filename": "audio_5ea110b6.wav",
+    "format": "wav",
+    "size": 157740,
+    "status": "READY",
+    "duration": 4.928,
+    "sample_rate": 16000,
+    "channels": 1,
+    "bits_per_sample": 16
+  },
+  "audio_47449ab8": {
+    "id": "audio_47449ab8",
+    "audio_id": "audio_47449ab8",
+    "filename": "audio_47449ab8.wav",
+    "original_filename": "audio_8c3033e0.wav",
+    "format": "wav",
+    "size": 157740,
+    "status": "READY",
+    "duration": 4.928,
+    "sample_rate": 16000,
+    "channels": 1,
+    "bits_per_sample": 16
+  },
+  "audio_6c0ac2c3": {
+    "id": "audio_6c0ac2c3",
+    "audio_id": "audio_6c0ac2c3",
+    "filename": "audio_6c0ac2c3.wav",
+    "original_filename": "audio_47449ab8.wav",
+    "format": "wav",
+    "size": 157740,
+    "status": "READY",
+    "duration": 4.928,
+    "sample_rate": 16000,
+    "channels": 1,
+    "bits_per_sample": 16
   }
 }

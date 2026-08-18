@@ -4,6 +4,7 @@ import io
 import json
 import sys
 import wave
+from urllib.error import HTTPError
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,7 +18,7 @@ from app.services.notification_service import (
     NotificationNotConfigured,
     NotificationService,
 )
-from app.services.tts_service import TTSNotConfigured, TTSService
+from app.services.tts_service import TTSNotConfigured, TTSProviderError, TTSService
 from app.storage import AudioRepository
 
 
@@ -106,6 +107,99 @@ def test_openai_compatible_tts_saves_provider_audio_in_backend_storage(tmp_path)
     assert timeout == 15
 
 
+def test_edge_tts_saves_generated_audio_without_api_credentials():
+    calls = []
+
+    class FakeRepository:
+        def save_upload(self, upload):
+            calls.append((upload.filename, upload.stream.read()))
+            return {"audio_id": "tts_edge_1", "format": "mp3", "status": "READY"}
+
+    service = TTSService(
+        provider="edge",
+        repository=FakeRepository(),
+        default_voice="vi-VN-HoaiMyNeural",
+        response_format="mp3",
+        edge_synthesizer=lambda text, voice: b"edge-mp3-bytes",
+    )
+
+    record = service.synthesize("Xin chào")
+
+    assert record["source"] == "tts"
+    assert calls == [("tts_edge_vi-VN-HoaiMyNeural.mp3", b"edge-mp3-bytes")]
+
+
+def test_elevenlabs_tts_uses_voice_path_api_key_and_output_format(tmp_path):
+    transport = CaptureTransport(FakeResponse(wav_bytes()))
+    service = TTSService(
+        provider="elevenlabs",
+        repository=AudioRepository(tmp_path / "audio", tmp_path / "metadata.json", 20 * 1024 * 1024),
+        api_url="https://api.elevenlabs.io/v1/text-to-speech",
+        api_key="eleven-test-key",
+        model="eleven_multilingual_v2",
+        default_voice="voice-123",
+        response_format="wav",
+        opener=transport,
+    )
+
+    record = service.synthesize("hello")
+
+    assert record["format"] == "wav"
+    assert record["source"] == "tts"
+    http_request, timeout = transport.requests[0]
+    assert http_request.full_url.endswith(
+        "/v1/text-to-speech/voice-123?output_format=wav_44100"
+    )
+    assert http_request.get_header("Xi-api-key") == "eleven-test-key"
+    assert request_json(http_request) == {
+        "text": "hello",
+        "model_id": "eleven_multilingual_v2",
+    }
+    assert timeout == 15
+
+
+def test_tts_provider_error_includes_http_status(tmp_path):
+    transport = CaptureTransport(FakeResponse(b'{"detail":"invalid api key"}', status=401))
+    service = TTSService(
+        provider="elevenlabs",
+        repository=AudioRepository(tmp_path / "audio", tmp_path / "metadata.json", 20 * 1024 * 1024),
+        api_url="https://api.elevenlabs.io/v1/text-to-speech",
+        api_key="bad-key",
+        model="eleven_multilingual_v2",
+        default_voice="voice-123",
+        response_format="mp3",
+        opener=transport,
+    )
+
+    with pytest.raises(RuntimeError, match="TTS provider HTTP 401"):
+        service.synthesize("hello")
+
+
+def test_tts_http_error_includes_provider_response_body(tmp_path):
+    def failing_opener(_request, timeout):
+        raise HTTPError(
+            "https://api.elevenlabs.io/v1/text-to-speech/voice-123",
+            400,
+            "Bad Request",
+            {},
+            io.BytesIO(b'{"detail":"voice not found"}'),
+        )
+
+    service = TTSService(
+        provider="elevenlabs",
+        repository=AudioRepository(tmp_path / "audio", tmp_path / "metadata.json", 20 * 1024 * 1024),
+        api_url="https://api.elevenlabs.io/v1/text-to-speech",
+        api_key="test-key",
+        model="eleven_multilingual_v2",
+        default_voice="voice-123",
+        response_format="mp3",
+        opener=failing_opener,
+    )
+
+    with pytest.raises(RuntimeError, match="voice not found"):
+        service.synthesize("hello")
+
+
 def test_tts_provider_requires_endpoint_and_model():
     with pytest.raises(TTSNotConfigured):
         TTSService(provider="openai_compatible").synthesize("hello")
@@ -141,6 +235,66 @@ def test_tts_route_persists_generated_audio_metadata_through_cloud(client):
         "format": "mp3",
         "status": "READY",
     }]
+
+
+def test_tts_route_reports_provider_failure_as_bad_gateway(client):
+    class FailingTTSService:
+        def synthesize(self, text, voice=None):
+            raise RuntimeError("provider HTTP 401")
+
+    client.application.extensions["tts_service"] = FailingTTSService()
+
+    response = client.post("/api/v1/audio/tts", json={"text": "hello"})
+
+    assert response.status_code == 502
+    assert response.json["error"]["code"] == "TTS_PROVIDER_FAILED"
+
+
+def test_tts_route_keeps_local_audio_when_cloud_sync_fails(client):
+    class FakeTTSService:
+        def synthesize(self, text, voice=None):
+            return {"audio_id": "tts_local_1", "filename": "tts_local_1.mp3", "format": "mp3"}
+
+    class FailingCloudService:
+        def save_metadata(self, record):
+            raise RuntimeError("cloud unavailable")
+
+    client.application.extensions["tts_service"] = FakeTTSService()
+    client.application.extensions["cloud_service"] = FailingCloudService()
+
+    response = client.post("/api/v1/audio/tts", json={"text": "hello"})
+
+    assert response.status_code == 201
+    assert response.json["data"]["cloud_synced"] is False
+
+
+def test_non_elevenlabs_provider_404_is_not_labeled_as_voice_not_found(client):
+    class FailingTTSService:
+        def synthesize(self, text, voice=None):
+            raise TTSProviderError(status=404, provider_code="not_found", message="not found")
+
+    client.application.extensions["tts_service"] = FailingTTSService()
+
+    response = client.post("/api/v1/audio/tts", json={"text": "hello"})
+
+    assert response.status_code == 502
+    assert response.json["error"]["code"] == "TTS_PROVIDER_FAILED"
+
+
+def test_tts_plan_error_is_reported_as_actionable_payment_error(client):
+    class PaidPlanTTSService:
+        def synthesize(self, text, voice=None):
+            raise TTSProviderError(
+                status=402,
+                provider_code="paid_plan_required",
+                message="Free users cannot use library voices via the API",
+            )
+
+    client.application.extensions["tts_service"] = PaidPlanTTSService()
+    response = client.post("/api/v1/audio/tts", json={"text": "hello"})
+
+    assert response.status_code == 402
+    assert response.json["error"]["code"] == "TTS_PLAN_REQUIRED"
 
 
 def test_firestore_metadata_persists_only_light_audio_metadata():
@@ -190,6 +344,19 @@ def test_firestore_metadata_persists_only_light_audio_metadata():
 def test_firestore_requires_credentials():
     with pytest.raises(CloudNotConfigured):
         CloudService(provider="firestore").save_metadata({"audio_id": "audio_1"})
+
+
+def test_firestore_http_failure_reports_status_and_detail():
+    transport = CaptureTransport(FakeResponse(b'{"error":{"status":"PERMISSION_DENIED"}}', status=403))
+    service = CloudService(
+        provider="firestore",
+        project_id="project-test",
+        access_token="token-test",
+        opener=transport,
+    )
+
+    with pytest.raises(RuntimeError, match="Firestore metadata HTTP 403"):
+        service.save_metadata({"audio_id": "audio_1"})
 
 
 def test_firestore_persists_device_status_in_separate_document():
@@ -244,6 +411,8 @@ def test_fcm_notification_sends_event_to_device():
     assert request.get_header("Authorization") == "Bearer token-test"
     payload = request_json(request)
     assert payload["message"]["token"] == "device-token"
+    assert payload["message"]["notification"]["title"] == "ESP32 event: PLAY_COMPLETED"
+    assert "esp32_01" in payload["message"]["notification"]["body"]
     assert payload["message"]["data"]["event"] == "PLAY_COMPLETED"
     assert payload["message"]["data"]["request_id"] == "req_1"
     assert timeout == 10

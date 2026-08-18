@@ -5,6 +5,7 @@ requires-python = ">=3.11"
 dependencies = [
   "Flask>=3.0,<4.0",
   "paho-mqtt>=1.6,<2.0",
+  "edge-tts>=7.0,<8.0",
 ]
 
 [dependency-groups]

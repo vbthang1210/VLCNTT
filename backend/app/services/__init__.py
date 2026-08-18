@@ -3,7 +3,7 @@ from .audio_stream_service import AudioStreamService
 from .cloud_service import CloudNotConfigured, CloudService
 from .notification_service import NotificationNotConfigured, NotificationService
 from .recording_service import PcmRecordingService, RecordingError
-from .tts_service import TTSNotConfigured, TTSService
+from .tts_service import TTSNotConfigured, TTSProviderError, TTSService
 
 __all__ = [
     "AudioService",
@@ -15,5 +15,6 @@ __all__ = [
     "PcmRecordingService",
     "RecordingError",
     "TTSNotConfigured",
+    "TTSProviderError",
     "TTSService",
 ]

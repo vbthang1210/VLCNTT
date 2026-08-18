@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, jsonify, request, send_file
 
+from ..services.tts_service import TTSNotConfigured, TTSProviderError
+
 
 audio_blueprint = Blueprint("audio", __name__, url_prefix="/api/v1/audio")
 
@@ -52,7 +54,7 @@ def upload_audio():
     try:
         record = current_app.extensions["cloud_service"].save_metadata(record)
     except Exception:
-        current_app.logger.warning("Cloud metadata sync failed for %s", record["audio_id"])
+        current_app.logger.warning("Cloud metadata sync failed for %s", record["audio_id"], exc_info=True)
         record = {**record, "cloud_synced": False}
         return ok(record, "Audio uploaded locally; Cloud sync pending", 201)
     return ok(record, "Audio uploaded", 201)
@@ -66,12 +68,32 @@ def tts_audio():
         return error("TEXT_REQUIRED", "text is required", 400)
     try:
         record = current_app.extensions["tts_service"].synthesize(text, body.get("voice"))
-        cloud_record = current_app.extensions["cloud_service"].save_metadata(record)
-        record = {**record, **cloud_record}
     except ValueError as exc:
         return error("TEXT_INVALID", str(exc), 400)
-    except Exception as exc:
+    except TTSNotConfigured as exc:
         return error("TTS_NOT_CONFIGURED", str(exc), 501)
+    except TTSProviderError as exc:
+        if exc.status == 402 or exc.provider_code == "paid_plan_required":
+            return error(
+                "TTS_PLAN_REQUIRED",
+                "TTS provider requires an eligible plan or voice for API use",
+                402,
+            )
+        if exc.provider_code == "invalid_api_key":
+            return error("TTS_AUTH_FAILED", "TTS provider API key was rejected", 401)
+        if exc.provider_code == "voice_not_found":
+            return error("TTS_VOICE_NOT_FOUND", "TTS voice ID was not found", 400)
+        return error("TTS_PROVIDER_FAILED", "TTS provider request failed", 502)
+    except Exception as exc:
+        current_app.logger.warning("TTS provider request failed: %s", exc)
+        return error("TTS_PROVIDER_FAILED", "TTS provider request failed", 502)
+    try:
+        cloud_record = current_app.extensions["cloud_service"].save_metadata(record)
+        record = {**record, **cloud_record}
+    except Exception:
+        current_app.logger.warning("Cloud metadata sync failed for TTS %s", record["audio_id"], exc_info=True)
+        record = {**record, "cloud_synced": False}
+        return ok(record, "TTS generated locally; Cloud sync pending", 201)
     return ok(record, "TTS generated", 201)
 
 

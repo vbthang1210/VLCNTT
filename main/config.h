@@ -2,12 +2,12 @@
 #define ESP32_AUDIO_CONFIG_H
 
 // Development defaults. Replace WiFi credentials and MQTT_HOST for hardware.
-#define WIFI_SSID "....."
-#define WIFI_PASSWORD "....."
-#define MQTT_HOST "......."
+#define WIFI_SSID "BenThanh Apartment"
+#define WIFI_PASSWORD "benthanh@"
+#define MQTT_HOST "192.168.1.67"
 #define MQTT_PORT 1883
-#define MQTT_USERNAME "..."
-#define MQTT_PASSWORD "...."
+#define MQTT_USERNAME "esp32_01"
+#define MQTT_PASSWORD "123"
 #define DEVICE_ID "esp32_01"
 
 // Default external I2S DAC wiring; change for the actual board/DAC.

@@ -51,6 +51,10 @@ RECORDING_MAX_SECONDS=60
 RECORDING_SESSION_TIMEOUT_SECONDS=15
 ```
 
+For free TTS, set `TTS_PROVIDER=edge` and use an Edge voice name such as
+`vi-VN-HoaiMyNeural`. For ElevenLabs, `TTS_PROVIDER=elevenlabs` uses `TTS_VOICE` as the ElevenLabs Voice ID,
+`TTS_API_KEY` as the `xi-api-key`, and `TTS_API_URL=https://api.elevenlabs.io/v1/text-to-speech`.
+
 Run tests:
 
 ```bash

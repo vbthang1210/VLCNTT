@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from urllib import request
+from urllib.error import HTTPError
 
 
 class CloudNotConfigured(RuntimeError):
@@ -24,6 +25,17 @@ class CloudService:
         self.access_token = access_token
         self.collection = collection
         self.opener = opener or request.urlopen
+
+    def _send(self, http_request, operation: str) -> None:
+        try:
+            with self.opener(http_request, timeout=10) as response:
+                status = getattr(response, "status", 200)
+                if status < 200 or status >= 300:
+                    detail = response.read(512).decode("utf-8", errors="replace").strip()
+                    raise RuntimeError(f"Firestore {operation} HTTP {status}: {detail}")
+        except HTTPError as exc:
+            detail = exc.read(512).decode("utf-8", errors="replace").strip()
+            raise RuntimeError(f"Firestore {operation} HTTP {exc.code}: {detail}") from exc
 
     def save_metadata(self, record: dict) -> dict:
         if self.provider != "firestore" or not self.project_id or not self.access_token:
@@ -66,9 +78,7 @@ class CloudService:
             },
             method="PATCH",
         )
-        with self.opener(http_request, timeout=10) as response:
-            if getattr(response, "status", 200) < 200 or getattr(response, "status", 200) >= 300:
-                raise RuntimeError("Cloud metadata request failed")
+        self._send(http_request, "metadata")
         return {**record, "cloud_synced": True}
 
     def save_status(self, status: dict) -> dict:
@@ -98,9 +108,7 @@ class CloudService:
             },
             method="PATCH",
         )
-        with self.opener(http_request, timeout=10) as response:
-            if getattr(response, "status", 200) < 200 or getattr(response, "status", 200) >= 300:
-                raise RuntimeError("Cloud status request failed")
+        self._send(http_request, "status")
         return {**status, "cloud_synced": True}
 
     def notify(self, event: dict) -> bool:
