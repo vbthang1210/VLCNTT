@@ -2,6 +2,7 @@
 #define MICROPHONE_RECORDER_H
 
 #include <Arduino.h>
+#include <driver/i2s_common.h>
 
 #include "config.h"
 
@@ -27,14 +28,21 @@ class MicrophoneRecorder {
   uint32_t durationMillis_ = 0;
   uint32_t sequence_ = 0;
   uint32_t sampleCount_ = 0;
+  uint32_t pausedMillis_ = 0;
+  uint32_t disconnectedAt_ = 0;
   bool active_ = false;
   bool completed_ = false;
   bool failed_ = false;
   bool driverReady_ = false;
+  bool networkPaused_ = false;
+  bool pendingChunk_ = false;
+  size_t pendingSampleCount_ = 0;
+  i2s_chan_handle_t rxChannel_ = nullptr;
   int32_t rawSamples_[MIC_SAMPLES_PER_CHUNK] = {};
   int16_t pcmSamples_[MIC_SAMPLES_PER_CHUNK] = {};
 
   bool installDriver();
+  bool flushPendingChunk();
   void releaseDriver();
   void fail();
 };

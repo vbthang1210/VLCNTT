@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MQTT_MANAGER = (ROOT / "main" / "mqtt_manager.cpp").read_text(encoding="utf-8")
 MAIN = (ROOT / "main" / "main.ino").read_text(encoding="utf-8")
+MICROPHONE = (ROOT / "main" / "microphone_recorder.cpp").read_text(encoding="utf-8")
+MICROPHONE_HEADER = (ROOT / "main" / "microphone_recorder.h").read_text(encoding="utf-8")
 
 
 def section(source: str, start: str, end: str) -> str:
@@ -44,3 +46,25 @@ def test_stop_command_stops_playback_and_recording():
 
 def test_loop_does_not_add_fixed_audio_delay():
     assert "delay(10);" not in MAIN
+
+
+def test_microphone_uses_new_i2s_standard_driver():
+    assert "#include <driver/i2s_std.h>" in MICROPHONE
+    assert "i2s_driver_install" not in MICROPHONE
+    assert "i2s_channel_read" in MICROPHONE
+
+
+def test_mqtt_connect_failures_are_reported_on_serial():
+    assert "client_.connectError()" in MQTT_MANAGER
+
+
+def test_recording_retries_pending_chunks_during_mqtt_reconnect():
+    assert "pendingChunk_" in MICROPHONE_HEADER
+    assert "networkPaused_" in MICROPHONE_HEADER
+    assert "flushPendingChunk" in MICROPHONE
+    assert "MIC_MQTT_RECOVERY_TIMEOUT_MS" in MICROPHONE
+
+
+def test_audio_chunks_use_nonblocking_mqtt_qos():
+    block = section(MQTT_MANAGER, "bool MqttManager::publishAudioChunk", "bool MqttManager::publishAudioEnd")
+    assert "false, 0" in block

@@ -48,7 +48,7 @@ class MqttManager {
   void connectIfDue();
   bool publish(const char* topic, const char* payload, bool retained);
   bool publishBytes(const char* topic, const uint8_t* payload, size_t length,
-                    bool retained);
+                    bool retained, uint8_t qos = 1);
 };
 
 #endif

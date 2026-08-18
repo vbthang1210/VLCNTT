@@ -194,3 +194,34 @@
   - PASS — `git diff --check`.
   - NOT VERIFIED — Browser visual smoke was blocked by Chrome remote-debugging approval; HTTP health and Node contract checks passed.
   - NOT VERIFIED — physical ESP32/MQTT-over-LAN/microphone runtime. Test wrapper children still held ports 3000/8000 after wrapper termination; no forced `taskkill` was performed without user consent.
+
+### 2026-08-18 15:14 - Fix ESP32 I2S driver conflict
+
+- Evidence: physical Serial log showed `E (341) i2s(legacy): CONFLICT! The new i2s driver can't work along with the legacy i2s driver`, followed by abort/reboot when recording initialized.
+- Root cause: `MicrophoneRecorder` used legacy `driver/i2s.h` APIs (`i2s_driver_install`, `i2s_read`) while `ESP8266Audio` playback uses the new ESP32 I2S driver.
+- Fix: migrated microphone capture to `driver/i2s_std.h`/`i2s_common.h` new-channel APIs on `I2S_NUM_1`; playback remains on its separate I2S path.
+- Verification:
+  - PASS — regression contract: microphone includes `driver/i2s_std.h` and no longer calls legacy install/read APIs.
+  - PASS — exact Arduino CLI compile with ESP32 Core 3.3.11: 1,095,032 bytes (83%), 53,352 bytes global (16%).
+  - PASS — `npm run check`: 37 tests.
+  - Warning — remaining compile warning originates from `ESP8266Audio` PDM narrowing, not the microphone driver.
+  - NOT VERIFIED — re-upload and physical recording runtime; the new firmware must be flashed before retesting the board.
+
+### 2026-08-18 17:30 - Diagnose short recording duration
+
+- Evidence: `rec_ec7ca603.wav` contains exactly 52,736 frames at 16 kHz, giving 3.296 seconds; Backend persisted the received samples without truncation.
+- Conclusion: the short recording occurs before WAV persistence, in the ESP32 command/stop/chunk path, not because Backend is slow.
+- Added Serial diagnostics for requested duration, start duration in milliseconds, stop chunk/sample counts, I2S read failures, and MQTT chunk publish failures.
+- PASS — exact firmware compile with ESP32 Core 3.3.11: 1,095,592 bytes (83%), 53,352 bytes global (16%).
+- PASS — `npm run check`: 36 passed, 2 auth integration tests skipped without local credential env.
+- Next hardware evidence required after re-upload: `RECORDING: command duration_s=...`, `started duration_ms=...`, and `stopping chunks=... samples=...`.
+
+### 2026-08-18 18:41 - Fix MQTT capture backpressure
+
+- Evidence: a 20-second command produced `stopping chunks=115 samples=58880`; serial showed MQTT disconnect and `MQTT chunk publish failed` during capture. WAV duration was 3.296–3.808 seconds, proving Backend persisted a short upstream stream rather than truncating it.
+- Fix: audio PCM chunks now use non-blocking MQTT QoS0; start/end/commands remain QoS1. A pending chunk is retained and retried across reconnect, with a 10-second recovery bound and paused recording clock.
+- Verification:
+  - PASS — firmware regression contracts for pending chunk/recovery and non-blocking audio QoS.
+  - PASS — exact Arduino compile: 1,096,060 bytes (83%), 53,368 bytes global (16%).
+  - PASS — `npm run check`: 38 passed, 2 auth integration tests skipped without credential env.
+  - NOT VERIFIED — new firmware upload/runtime 20-second sample count and microphone hiss source.

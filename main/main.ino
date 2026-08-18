@@ -89,6 +89,8 @@ void onMqttCommand(const char* payload, size_t length) {
                    "recording_id and duration_seconds are required");
       return;
     }
+    Serial.print("RECORDING: command duration_s=");
+    Serial.println(static_cast<unsigned long>(duration));
     if (audioPlayer.isActive()) {
       const char* interruptedAudioId = audioPlayer.audioId();
       audioPlayer.stop();

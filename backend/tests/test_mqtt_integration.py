@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import socket
 import sys
@@ -34,9 +35,14 @@ def broker_available() -> bool:
 def test_local_broker_round_trip_qos1():
     if not broker_available():
         pytest.skip("local Mosquitto is unavailable")
+    username = os.environ.get("MQTT_TEST_USERNAME")
+    password = os.environ.get("MQTT_TEST_PASSWORD")
+    if not username or password is None:
+        pytest.skip("MQTT_TEST_USERNAME and MQTT_TEST_PASSWORD are required for an authenticated broker")
     received = []
     done = Event()
     client = mqtt.Client(client_id="backend-test-subscriber")
+    client.username_pw_set(username, password)
 
     def on_message(_client, _userdata, message):
         received.append((message.topic, json.loads(message.payload.decode())))
@@ -47,6 +53,7 @@ def test_local_broker_round_trip_qos1():
     client.subscribe("integration/test", qos=1)
     client.loop_start()
     publisher = mqtt.Client(client_id="backend-test-publisher")
+    publisher.username_pw_set(username, password)
     publisher.connect("127.0.0.1", 1883, 5)
     info = publisher.publish("integration/test", json.dumps({"ok": True}), qos=1)
     info.wait_for_publish(timeout=3)
@@ -61,6 +68,12 @@ def test_local_broker_round_trip_qos1():
 def test_local_broker_assembles_pcm_recording(tmp_path):
     if not broker_available():
         pytest.skip("local Mosquitto is unavailable")
+    backend_username = os.environ.get("MQTT_USERNAME")
+    backend_password = os.environ.get("MQTT_PASSWORD")
+    device_username = os.environ.get("MQTT_DEVICE_USERNAME")
+    device_password = os.environ.get("MQTT_DEVICE_PASSWORD")
+    if not all((backend_username, backend_password, device_username, device_password)):
+        pytest.skip("MQTT backend/device credentials are required for an authenticated broker")
 
     from app import create_app
 
@@ -73,12 +86,15 @@ def test_local_broker_assembles_pcm_recording(tmp_path):
             "MQTT_ENABLED": "true",
             "MQTT_HOST": "127.0.0.1",
             "MQTT_PORT": "1883",
+            "MQTT_USERNAME": backend_username,
+            "MQTT_PASSWORD": backend_password,
             "AUDIO_STORAGE_PATH": str(tmp_path / "audio"),
             "METADATA_PATH": str(tmp_path / "metadata.json"),
         }
     )
     service = app.extensions["mqtt_service"]
     publisher = mqtt.Client(client_id=f"recording-publisher-{suffix}")
+    publisher.username_pw_set(device_username, device_password)
     try:
         service.start()
         deadline = time.time() + 3

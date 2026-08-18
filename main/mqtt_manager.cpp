@@ -85,6 +85,8 @@ void MqttManager::connectIfDue() {
     return;
   }
 
+  Serial.print("MQTT: connect failed, error=");
+  Serial.println(client_.connectError());
   nextAttemptAt_ = now + reconnectDelayMs_;
   if (reconnectDelayMs_ < MQTT_CONNECT_RETRY_MAX_MS) {
     reconnectDelayMs_ *= 2;
@@ -103,11 +105,11 @@ bool MqttManager::publish(const char* topic, const char* payload,
 }
 
 bool MqttManager::publishBytes(const char* topic, const uint8_t* payload,
-                               size_t length, bool retained) {
+                               size_t length, bool retained, uint8_t qos) {
   if (!client_.connected() || topic == nullptr || payload == nullptr) {
     return false;
   }
-  if (client_.beginMessage(topic, length, retained, 1, false) == 0) {
+  if (client_.beginMessage(topic, length, retained, qos, false) == 0) {
     return false;
   }
   if (client_.write(payload, length) != length) {
@@ -151,7 +153,8 @@ bool MqttManager::publishAudioChunk(const char* recordingId, uint32_t sequence,
   char topic[160];
   snprintf(topic, sizeof(topic), "esp32/%s/audio/chunk/%s/%lu", deviceId_, recordingId,
            static_cast<unsigned long>(sequence));
-  return publishBytes(topic, reinterpret_cast<const uint8_t*>(samples), sampleCount * sizeof(int16_t), false);
+  return publishBytes(topic, reinterpret_cast<const uint8_t*>(samples),
+                      sampleCount * sizeof(int16_t), false, 0);
 }
 
 bool MqttManager::publishAudioEnd(const char* recordingId, uint32_t totalChunks,
