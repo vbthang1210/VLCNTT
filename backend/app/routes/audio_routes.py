@@ -73,3 +73,50 @@ def stream_audio(audio_id):
         return error("AUDIO_NOT_FOUND", "Audio file not found", 404)
     mimetype = "audio/mpeg" if record["format"] == "mp3" else "audio/wav"
     return send_file(path, mimetype=mimetype, conditional=True, download_name=record["filename"])
+
+
+@audio_blueprint.get("/cloud")
+def list_cloud_metadata():
+    try:
+        metadata = current_app.extensions[
+            "cloud_service"
+        ].list_metadata()
+
+    except Exception as exc:
+        return error(
+            "CLOUD_METADATA_FETCH_FAILED",
+            str(exc),
+            502,
+        )
+
+    return ok(
+        metadata,
+        "Cloud metadata retrieved",
+    )
+
+
+@audio_blueprint.get("/cloud/<audio_id>")
+def get_cloud_metadata(audio_id):
+    try:
+        metadata = current_app.extensions[
+            "cloud_service"
+        ].get_metadata(audio_id)
+
+    except Exception as exc:
+        return error(
+            "CLOUD_METADATA_FETCH_FAILED",
+            str(exc),
+            502,
+        )
+
+    if metadata is None:
+        return error(
+            "CLOUD_METADATA_NOT_FOUND",
+            "Audio metadata not found in cloud",
+            404,
+        )
+
+    return ok(
+        metadata,
+        "Cloud metadata retrieved",
+    )
