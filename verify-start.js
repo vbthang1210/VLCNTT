@@ -11,9 +11,15 @@ const server = http.createServer((request, response) => {
     return;
   }
   served = true;
-  response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  response.writeHead(200, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    Connection: 'close',
+  });
   response.end('verification-ready\n', () => {
     server.close(() => process.exit(0));
+    if (typeof server.closeAllConnections === 'function') {
+      server.closeAllConnections();
+    }
   });
 });
 

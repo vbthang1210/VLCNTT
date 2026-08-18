@@ -18,6 +18,7 @@ ALLOWED_STATUSES = {
     "BUFFERING",
     "PLAYING",
     "PAUSED",
+    "RECORDING",
     "STOPPED",
     "ERROR",
 }
@@ -29,6 +30,7 @@ class DeviceState:
     status: str = "OFFLINE"
     request_id: str | None = None
     audio_id: str | None = None
+    recording_id: str | None = None
     updated_at: str | None = None
     error: dict | None = None
     last_event: dict | None = None
@@ -58,6 +60,7 @@ class DeviceStateStore:
             state.status = status
             state.request_id = request_id or state.request_id
             state.audio_id = payload.get("audio_id", state.audio_id)
+            state.recording_id = payload.get("recording_id", state.recording_id)
             state.error = payload.get("error")
             state.updated_at = datetime.now(timezone.utc).isoformat()
             return state
@@ -89,6 +92,7 @@ class DeviceStateStore:
             "status": state.status,
             "request_id": state.request_id,
             "audio_id": state.audio_id,
+            "recording_id": state.recording_id,
             "updated_at": state.updated_at,
             "error": state.error,
             "last_event": state.last_event,
@@ -96,11 +100,19 @@ class DeviceStateStore:
 
 
 class MqttService:
-    def __init__(self, settings, state_store: DeviceStateStore, notification_service=None, cloud_service=None):
+    def __init__(
+        self,
+        settings,
+        state_store: DeviceStateStore,
+        notification_service=None,
+        cloud_service=None,
+        recording_service=None,
+    ):
         self.settings = settings
         self.state_store = state_store
         self.notification_service = notification_service
         self.cloud_service = cloud_service
+        self.recording_service = recording_service
         self.client = None
         self._connected = False
 
@@ -129,6 +141,7 @@ class MqttService:
             client.subscribe("esp32/+/status", qos=1)
             client.subscribe("esp32/+/event", qos=1)
             client.subscribe("esp32/+/error", qos=1)
+            client.subscribe("esp32/+/audio/#", qos=1)
 
     def _on_disconnect(self, client, userdata, rc):
         self._connected = False
@@ -138,13 +151,16 @@ class MqttService:
         return
 
     def _on_message(self, client, userdata, message):
+        parts = message.topic.split("/")
+        if len(parts) >= 4 and parts[0] == "esp32" and parts[2] == "audio":
+            self._handle_audio_message(parts, message.payload)
+            return
         try:
             payload = json.loads(message.payload.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             return
         if not isinstance(payload, dict):
             return
-        parts = message.topic.split("/")
         if len(parts) == 3 and parts[0] == "esp32" and parts[2] == "event":
             self.state_store.record_event(payload)
             self._notify(payload)
@@ -160,6 +176,50 @@ class MqttService:
         self._persist_status(payload)
         if payload.get("status") in {"ERROR", "OFFLINE"}:
             self._notify(payload)
+
+    def _handle_audio_message(self, parts: list[str], payload: bytes) -> None:
+        if self.recording_service is None:
+            return
+        device_id = parts[1]
+        try:
+            if parts[3] == "chunk" and len(parts) == 6:
+                self.recording_service.append_chunk(
+                    device_id,
+                    parts[4],
+                    int(parts[5]),
+                    payload,
+                )
+                return
+            if len(parts) != 4 or parts[3] not in {"start", "end"}:
+                return
+            body = json.loads(payload.decode("utf-8"))
+            if not isinstance(body, dict):
+                return
+            if body.get("device_id", device_id) != device_id:
+                return
+            body = {**body, "device_id": device_id}
+            if parts[3] == "start":
+                self.recording_service.start(device_id, body)
+                return
+            record = self.recording_service.finish(device_id, body)
+            self._persist_audio_metadata(record)
+            self._notify({
+                "device_id": device_id,
+                "event": "RECORDING_COMPLETED",
+                "recording_id": record["audio_id"],
+                "audio_id": record["audio_id"],
+            })
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError, RuntimeError):
+            return
+
+    def _persist_audio_metadata(self, record: dict) -> None:
+        if self.cloud_service is None:
+            return
+        try:
+            self.cloud_service.save_metadata(record)
+        except Exception:
+            # Local Backend storage remains authoritative when Cloud is unavailable.
+            return
 
     def _persist_status(self, payload: dict) -> None:
         if self.cloud_service is None:

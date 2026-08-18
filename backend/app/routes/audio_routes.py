@@ -73,3 +73,25 @@ def stream_audio(audio_id):
         return error("AUDIO_NOT_FOUND", "Audio file not found", 404)
     mimetype = "audio/mpeg" if record["format"] == "mp3" else "audio/wav"
     return send_file(path, mimetype=mimetype, conditional=True, download_name=record["filename"])
+
+
+@audio_blueprint.get("/<audio_id>/download")
+def download_audio(audio_id):
+    repository = current_app.extensions["audio_repository"]
+    record = repository.get(audio_id)
+    if not record:
+        return error("AUDIO_NOT_FOUND", "Audio file not found", 404)
+    try:
+        path = repository.path_for(audio_id)
+    except (FileNotFoundError, RuntimeError):
+        return error("AUDIO_NOT_FOUND", "Audio file not found", 404)
+    if not path.is_file():
+        return error("AUDIO_NOT_FOUND", "Audio file not found", 404)
+    mimetype = "audio/mpeg" if record["format"] == "mp3" else "audio/wav"
+    return send_file(
+        path,
+        mimetype=mimetype,
+        conditional=True,
+        as_attachment=True,
+        download_name=record["filename"],
+    )

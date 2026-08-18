@@ -2,6 +2,7 @@
 #include "config.h"
 #include "mqtt_manager.h"
 #include "audio_player.h"
+#include "microphone_recorder.h"
 
 #include <ArduinoJson.h>
 
@@ -9,6 +10,7 @@ namespace {
 WifiManager wifiManager;
 MqttManager mqttManager;
 AudioPlayer audioPlayer;
+MicrophoneRecorder microphoneRecorder;
 bool lastWifiState = false;
 bool lastMqttState = false;
 
@@ -23,6 +25,17 @@ void publishState(const char* requestId, const char* status, const char* audioId
              "{\"device_id\":\"%s\",\"request_id\":\"%s\",\"status\":\"%s\"}",
              DEVICE_ID, requestId, status);
   }
+  mqttManager.publishStatus(payload);
+}
+
+void publishRecordingState(const char* requestId, const char* status,
+                           const char* recordingId) {
+  char payload[224];
+  snprintf(payload, sizeof(payload),
+           "{\"device_id\":\"%s\",\"request_id\":\"%s\","
+           "\"recording_id\":\"%s\",\"status\":\"%s\"}",
+           DEVICE_ID, requestId == nullptr ? "" : requestId,
+           recordingId == nullptr ? "" : recordingId, status);
   mqttManager.publishStatus(payload);
 }
 
@@ -43,6 +56,17 @@ void publishEvent(const char* requestId, const char* event, const char* audioId 
   mqttManager.publishEvent(payload);
 }
 
+void publishRecordingEvent(const char* requestId, const char* event,
+                           const char* recordingId) {
+  char payload[224];
+  snprintf(payload, sizeof(payload),
+           "{\"device_id\":\"%s\",\"request_id\":\"%s\","
+           "\"recording_id\":\"%s\",\"event\":\"%s\"}",
+           DEVICE_ID, requestId == nullptr ? "" : requestId,
+           recordingId == nullptr ? "" : recordingId, event);
+  mqttManager.publishEvent(payload);
+}
+
 void onMqttCommand(const char* payload, size_t length) {
   JsonDocument command;
   const DeserializationError parseError = deserializeJson(command, payload, length);
@@ -54,6 +78,31 @@ void onMqttCommand(const char* payload, size_t length) {
   }
   if (requestId[0] == '\0' || action[0] == '\0') {
     publishError(requestId, "COMMAND_FIELDS_MISSING", "request_id and command are required");
+    return;
+  }
+
+  if (strcmp(action, "START_RECORDING") == 0) {
+    const char* recordingId = command["recording_id"] | "";
+    const uint32_t duration = command["duration_seconds"] | RECORDING_DEFAULT_SECONDS;
+    if (recordingId[0] == '\0' || duration == 0 || duration > RECORDING_MAX_SECONDS) {
+      publishError(requestId, "RECORDING_FIELDS_INVALID",
+                   "recording_id and duration_seconds are required");
+      return;
+    }
+    if (!microphoneRecorder.start(requestId, recordingId, duration)) {
+      publishError(requestId, "MICROPHONE_START_FAILED",
+                   "Unable to initialize INMP441 recording");
+      return;
+    }
+    publishRecordingState(requestId, "RECORDING", recordingId);
+    return;
+  }
+
+  if (strcmp(action, "STOP_RECORDING") == 0) {
+    if (!microphoneRecorder.stop()) {
+      publishError(requestId, "INVALID_STATE",
+                   "STOP_RECORDING requires an active recording session");
+    }
     return;
   }
 
@@ -111,6 +160,7 @@ void setup() {
   wifiManager.begin(WIFI_SSID, WIFI_PASSWORD);
   mqttManager.begin(MQTT_HOST, MQTT_PORT, DEVICE_ID, MQTT_USERNAME,
                     MQTT_PASSWORD, onMqttCommand);
+  microphoneRecorder.begin(&mqttManager);
 }
 
 void loop() {
@@ -118,6 +168,7 @@ void loop() {
   if (wifiManager.isConnected()) {
     mqttManager.update();
     audioPlayer.update();
+    microphoneRecorder.update();
   }
 
   const bool connected = wifiManager.isConnected();
@@ -140,6 +191,20 @@ void loop() {
   if (audioPlayer.takeFailed()) {
     publishState(audioPlayer.requestId(), "ERROR", audioPlayer.audioId());
     publishError(audioPlayer.requestId(), "AUDIO_PLAYBACK_FAILED", "Audio playback stopped after a stream or decoder failure");
+  }
+
+  if (microphoneRecorder.takeCompleted()) {
+    publishRecordingState(microphoneRecorder.requestId(), "STOPPED",
+                          microphoneRecorder.recordingId());
+    publishRecordingEvent(microphoneRecorder.requestId(), "RECORDING_COMPLETED",
+                          microphoneRecorder.recordingId());
+  }
+
+  if (microphoneRecorder.takeFailed()) {
+    publishRecordingState(microphoneRecorder.requestId(), "ERROR",
+                          microphoneRecorder.recordingId());
+    publishError(microphoneRecorder.requestId(), "MICROPHONE_RECORDING_FAILED",
+                 "Audio chunk publishing or INMP441 capture failed");
   }
 
   delay(10);

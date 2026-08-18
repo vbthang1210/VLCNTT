@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import wave
 from pathlib import Path
 from threading import Lock
 
@@ -89,8 +90,56 @@ class AudioRepository:
             self._write_records(records)
         return record
 
+    def save_pcm_recording(
+        self,
+        recording_id: str,
+        pcm_path: Path,
+        sample_rate: int,
+        channels: int,
+        bits_per_sample: int,
+        metadata: dict,
+    ) -> dict:
+        filename = f"{recording_id}.wav"
+        destination = self.storage_path / filename
+        if destination.exists():
+            pcm_path.unlink(missing_ok=True)
+            raise ValueError("Recording already exists")
+        try:
+            with wave.open(str(destination), "wb") as output:
+                output.setnchannels(channels)
+                output.setsampwidth(bits_per_sample // 8)
+                output.setframerate(sample_rate)
+                with Path(pcm_path).open("rb") as source:
+                    while chunk := source.read(64 * 1024):
+                        output.writeframesraw(chunk)
+            record = {
+                "id": recording_id,
+                "audio_id": recording_id,
+                "filename": filename,
+                "original_filename": filename,
+                "format": "wav",
+                "status": "READY",
+                "sample_rate": sample_rate,
+                "channels": channels,
+                "bits_per_sample": bits_per_sample,
+                **metadata,
+                "size": destination.stat().st_size,
+            }
+            with self._lock:
+                records = self._read_records()
+                records[recording_id] = record
+                self._write_records(records)
+            return record
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
+        finally:
+            pcm_path.unlink(missing_ok=True)
+
     def delete_all_for_tests(self) -> None:
         with self._lock:
             for path in self.storage_path.glob("audio_*"):
+                path.unlink(missing_ok=True)
+            for path in (self.storage_path / ".recordings").glob(".*.pcm"):
                 path.unlink(missing_ok=True)
             self._write_records({})

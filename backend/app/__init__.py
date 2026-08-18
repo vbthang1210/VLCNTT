@@ -13,6 +13,7 @@ from .services import (
     CloudService,
     MetadataService,
     NotificationService,
+    PcmRecordingService,
     TTSService,
 )
 
@@ -32,6 +33,10 @@ def create_app(overrides: dict | None = None) -> Flask:
     app.extensions["audio_repository"] = repository
     app.extensions["audio_service"] = AudioService(repository)
     app.extensions["audio_stream_service"] = AudioStreamService(repository)
+    app.extensions["recording_service"] = PcmRecordingService(
+        repository,
+        settings.recording_max_seconds,
+    )
     app.extensions["metadata_service"] = MetadataService(settings.cloud_provider)
     app.extensions["cloud_service"] = CloudService(
         settings.cloud_provider,
@@ -60,6 +65,7 @@ def create_app(overrides: dict | None = None) -> Flask:
         app.extensions["device_state"],
         app.extensions["notification_service"],
         app.extensions["cloud_service"],
+        app.extensions["recording_service"],
     )
 
     app.register_blueprint(audio_blueprint)

@@ -6,6 +6,12 @@ const message = document.querySelector('#message');
 const status = document.querySelector('#status');
 const volume = document.querySelector('#volume');
 const volumeValue = document.querySelector('#volumeValue');
+const audioPreview = document.querySelector('#audioPreview');
+const audioRecords = document.querySelector('#audioRecords');
+const recordDuration = document.querySelector('#recordDuration');
+const recordStart = document.querySelector('#recordStart');
+const recordStop = document.querySelector('#recordStop');
+let activeRecordingId = null;
 
 function showMessage(text) {
   if (message) {
@@ -25,8 +31,69 @@ async function api(path, options = {}) {
   return payload.data;
 }
 
+function streamUrl(audioId) {
+  return `${BACKEND}/api/v1/audio/${encodeURIComponent(audioId)}/stream`;
+}
+
+function downloadUrl(audioId) {
+  return `${BACKEND}/api/v1/audio/${encodeURIComponent(audioId)}/download`;
+}
+
+function updatePreview() {
+  if (!audioPreview) return;
+  audioPreview.removeAttribute('src');
+  if (audioList.value) {
+    audioPreview.src = streamUrl(audioList.value);
+  }
+  audioPreview.load();
+}
+
+function renderAudioRecords(records) {
+  if (!audioRecords) return;
+  audioRecords.replaceChildren();
+  if (!records.length) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = 'Chưa có bản ghi nào.';
+    audioRecords.appendChild(empty);
+    return;
+  }
+  for (const record of records) {
+    const item = document.createElement('article');
+    item.className = 'audio-record';
+
+    const heading = document.createElement('strong');
+    heading.textContent = record.original_filename || record.filename;
+    item.appendChild(heading);
+
+    const metadata = document.createElement('span');
+    const duration = record.duration
+      ? `${Number(record.duration).toFixed(1)}s`
+      : 'không rõ thời lượng';
+    const format = (record.format || 'wav').toUpperCase();
+    const source = record.source === 'INMP441' ? 'INMP441' : format;
+    metadata.textContent = `${source} · ${duration} · ${record.status}`;
+    item.appendChild(metadata);
+
+    const player = document.createElement('audio');
+    player.controls = true;
+    player.preload = 'none';
+    player.src = streamUrl(record.audio_id);
+    item.appendChild(player);
+
+    const download = document.createElement('a');
+    download.className = 'download-link';
+    download.href = downloadUrl(record.audio_id);
+    download.textContent = 'Tải về';
+    download.setAttribute('download', record.filename);
+    item.appendChild(download);
+    audioRecords.appendChild(item);
+  }
+}
+
 async function refreshAudio() {
   try {
+    const selectedId = audioList.value;
     const records = await api('/api/v1/audio');
     audioList.replaceChildren();
     for (const record of records) {
@@ -38,7 +105,13 @@ async function refreshAudio() {
     }
     if (!records.length) {
       audioList.add(new Option('Chưa có tệp âm thanh nào', ''));
+    } else {
+      audioList.value = records.some((record) => record.audio_id === selectedId)
+        ? selectedId
+        : records[0].audio_id;
     }
+    updatePreview();
+    renderAudioRecords(records);
   } catch (error) {
     showMessage(`Lỗi tải danh sách âm thanh: ${error.message}`);
   }
@@ -62,8 +135,54 @@ async function refreshStatus() {
   try {
     const state = await api(`/api/v1/devices/${encodeURIComponent(deviceId.value)}/status`);
     status.textContent = JSON.stringify(state, null, 2);
+    if (activeRecordingId && state.recording_id === activeRecordingId
+        && ['STOPPED', 'ERROR'].includes(state.status)) {
+      activeRecordingId = null;
+      recordStart.disabled = false;
+      recordStop.disabled = true;
+      await refreshAudio();
+    }
   } catch (error) {
     status.textContent = `Không lấy được trạng thái: ${error.message}`;
+  }
+}
+
+async function startRecording() {
+  const duration = Number(recordDuration.value);
+  if (!Number.isInteger(duration) || duration < 1 || duration > 60) {
+    showMessage('Thời lượng ghi phải là số nguyên từ 1 đến 60 giây.');
+    return;
+  }
+  try {
+    const data = await api(`/api/v1/devices/${encodeURIComponent(deviceId.value)}/record/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ duration_seconds: duration }),
+    });
+    activeRecordingId = data.recording_id;
+    recordStart.disabled = true;
+    recordStop.disabled = false;
+    showMessage(`Đã gửi lệnh ghi ${duration}s (${data.recording_id}).`);
+    await refreshStatus();
+  } catch (error) {
+    showMessage(`Bắt đầu ghi thất bại: ${error.message}`);
+  }
+}
+
+async function stopRecording() {
+  if (!activeRecordingId) {
+    showMessage('Không có phiên ghi âm đang hoạt động.');
+    return;
+  }
+  try {
+    await api(`/api/v1/devices/${encodeURIComponent(deviceId.value)}/record/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recording_id: activeRecordingId }),
+    });
+    showMessage('Đã gửi lệnh dừng ghi; đang chờ Backend ghép WAV.');
+  } catch (error) {
+    showMessage(`Dừng ghi thất bại: ${error.message}`);
   }
 }
 
@@ -106,6 +225,8 @@ document.querySelector('#play').addEventListener('click', () => {
 
 document.querySelector('#stop').addEventListener('click', () => sendCommand('stop'));
 document.querySelector('#pause').addEventListener('click', () => sendCommand('pause'));
+recordStart.addEventListener('click', startRecording);
+recordStop.addEventListener('click', stopRecording);
 
 volume.addEventListener('input', () => {
   if (volumeValue) volumeValue.textContent = volume.value;
@@ -116,6 +237,7 @@ volume.addEventListener('change', () => {
 });
 
 deviceId.addEventListener('change', refreshStatus);
+audioList.addEventListener('change', updatePreview);
 
 // Khởi chạy ban đầu
 refreshAudio();

@@ -18,6 +18,12 @@ class MqttManager {
   bool publishStatus(const char* payload);
   bool publishEvent(const char* payload);
   bool publishError(const char* payload);
+  bool publishAudioStart(const char* recordingId, uint32_t sampleRate,
+                        uint8_t channels, uint8_t bitsPerSample);
+  bool publishAudioChunk(const char* recordingId, uint32_t sequence,
+                         const int16_t* samples, size_t sampleCount);
+  bool publishAudioEnd(const char* recordingId, uint32_t totalChunks,
+                       uint32_t sampleCount);
   void receiveCommand(int messageSize);
 
  private:
@@ -31,6 +37,8 @@ class MqttManager {
   char statusTopic_[96] = {};
   char eventTopic_[96] = {};
   char errorTopic_[96] = {};
+  char audioStartTopic_[96] = {};
+  char audioEndTopic_[96] = {};
   CommandCallback callback_ = nullptr;
   uint32_t nextAttemptAt_ = 0;
   uint32_t reconnectDelayMs_ = 1000;
@@ -39,6 +47,8 @@ class MqttManager {
 
   void connectIfDue();
   bool publish(const char* topic, const char* payload, bool retained);
+  bool publishBytes(const char* topic, const uint8_t* payload, size_t length,
+                    bool retained);
 };
 
 #endif

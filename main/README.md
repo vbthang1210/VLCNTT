@@ -19,6 +19,7 @@ Edit `config.h` locally:
 - `MQTT_HOST` — must be the backend computer LAN IP for a physical ESP32; `127.0.0.1` is host-only.
 - `DEVICE_ID`
 - I2S pins for the actual external DAC.
+- `MIC_I2S_BCLK_PIN`, `MIC_I2S_WS_PIN`, and `MIC_I2S_SD_PIN` for the INMP441.
 
 No credentials are committed by this project.
 
@@ -31,5 +32,9 @@ arduino-cli compile --clean --warnings all \
 ```
 
 The firmware uses a bounded `AudioFileSourceBuffer` and HTTP stream. It does not allocate RAM based on total audio-file size.
+
+The INMP441 recorder captures 16 kHz mono 16-bit PCM on I2S1. It publishes a JSON
+start marker, bounded raw PCM MQTT chunks, and a JSON end marker. The Backend
+assembles those chunks into a WAV file; MQTT never carries the completed WAV file.
 
 Hardware upload, WiFi association, MQTT-over-LAN, decoder, I2S, and speaker output remain hardware-dependent verification steps.

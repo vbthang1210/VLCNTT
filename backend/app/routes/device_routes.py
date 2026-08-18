@@ -27,7 +27,11 @@ def publish(device_id: str, payload: dict):
     if not service.publish_command(device_id, payload):
         return error("MQTT_UNAVAILABLE", "MQTT command could not be published", 503)
     state_store.set_current_request(device_id, payload["request_id"])
-    return ok({"request_id": payload["request_id"], "command": payload["command"]}, "Command accepted", 202)
+    data = {"request_id": payload["request_id"], "command": payload["command"]}
+    for key in ("recording_id", "duration_seconds"):
+        if key in payload:
+            data[key] = payload[key]
+    return ok(data, "Command accepted", 202)
 
 
 @device_blueprint.get("/<device_id>/status")
@@ -78,3 +82,36 @@ def volume(device_id):
         device_id,
         {"request_id": request_id_from_body(body), "command": "SET_VOLUME", "volume": value},
     )
+
+
+@device_blueprint.post("/<device_id>/record/start")
+def start_recording(device_id):
+    body = request.get_json(silent=True) or {}
+    settings = current_app.config["SETTINGS"]
+    duration = body.get("duration_seconds", settings.recording_default_seconds)
+    if (isinstance(duration, bool) or not isinstance(duration, int)
+            or not 1 <= duration <= settings.recording_max_seconds):
+        return error(
+            "RECORDING_DURATION_INVALID",
+            f"duration_seconds must be an integer from 1 to {settings.recording_max_seconds}",
+            400,
+        )
+    recording_id = f"rec_{secrets.token_hex(4)}"
+    return publish(
+        device_id,
+        {
+            "request_id": request_id_from_body(body),
+            "command": "START_RECORDING",
+            "recording_id": recording_id,
+            "duration_seconds": duration,
+        },
+    )
+
+
+@device_blueprint.post("/<device_id>/record/stop")
+def stop_recording(device_id):
+    body = request.get_json(silent=True) or {}
+    payload = {"request_id": request_id_from_body(body), "command": "STOP_RECORDING"}
+    if isinstance(body.get("recording_id"), str) and body["recording_id"]:
+        payload["recording_id"] = body["recording_id"]
+    return publish(device_id, payload)

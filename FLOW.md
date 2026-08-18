@@ -393,3 +393,34 @@ MQTT
 
 ESP32
 → nhận lệnh, tải File từ Backend và phát ra Loa
+
+
+## 13. Luồng mới: Micro INMP441 → Web Dashboard
+
+Người nói vào Micro INMP441
+↓
+ESP32 đọc I2S và chuyển mẫu thành PCM s16le
+↓
+ESP32 chia PCM thành các chunk 512 samples
+↓
+Mosquitto nhận MQTT `audio/start`, `audio/chunk/{recording_id}/{sequence}`, `audio/end`
+↓
+Backend Python kiểm tra sequence và ghép các chunk
+├── Đóng gói WAV: 16 kHz, Mono, 16-bit
+├── Lưu File thật: `backend/storage/audio/rec_xxx.wav`
+└── Lưu Metadata: `backend/storage/metadata.json`
+↓
+Web gọi `GET /api/v1/audio` và cập nhật danh sách
+↓
+User bấm nghe bằng `<audio controls>` hoặc tải qua endpoint download
+
+Web vẫn chỉ gọi Backend API. File WAV hoàn chỉnh không đi qua MQTT.
+
+Để tạo phiên ghi:
+
+```text
+Web → POST /api/v1/devices/{device_id}/record/start
+    → Backend → MQTT START_RECORDING
+    → ESP32 publish PCM chunks
+    → Backend finalize WAV
+```

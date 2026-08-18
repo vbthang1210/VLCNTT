@@ -40,12 +40,16 @@ class CloudService:
             "duration",
             "format",
             "sample_rate",
+            "channels",
+            "bits_per_sample",
+            "sample_count",
             "size",
             "status",
             "device_id",
+            "source",
         }
         fields = {key: {"stringValue": str(value)} for key, value in record.items() if key in allowed and value is not None}
-        for key in {"duration", "sample_rate", "size"} & fields.keys():
+        for key in {"duration", "sample_rate", "channels", "bits_per_sample", "sample_count", "size"} & fields.keys():
             value = record[key]
             fields[key] = {"doubleValue": value} if key == "duration" else {"integerValue": str(value)}
         payload = json.dumps({"fields": fields}).encode("utf-8")

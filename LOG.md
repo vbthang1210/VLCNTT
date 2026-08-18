@@ -140,3 +140,37 @@
   - Physical ESP32/DAC/I2S and browser interaction remain NOT VERIFIED.
 
 - Scope stopped after provider-adapter implementation and host verification; hardware and real external-provider smoke tests require user-supplied configuration.
+
+### 2026-08-18 03:21 - Add INMP441 recording flow
+
+- Đã làm:
+  - Added `PcmRecordingService` to receive ordered raw PCM MQTT chunks, assemble a temporary stream, write a 16 kHz mono 16-bit WAV, and persist `rec_xxx.wav` plus `backend/storage/metadata.json`.
+  - Added Backend subscriptions for `esp32/+/audio/#`, `START_RECORDING`/`STOP_RECORDING` command APIs, `RECORDING` device state, and the download endpoint.
+  - Added ESP32 I2S1 INMP441 capture, 512-sample PCM chunk publishing, start/end markers, and bounded recording duration.
+  - Added Dashboard recording controls, live audio preview, per-record `<audio controls>`, and download links.
+  - Updated `PROJECT_RULES.md`, `FLOW.md`, `ARCHITECTURE_LOG.md`, `TASK.md`, and `docs/PROJECT_TASKS.md` with the new contract and explicit verification boundaries.
+  - Fixed the one-shot `verify-start.js` readiness recipe to close HTTP connections cleanly.
+
+- File đã sửa/thêm:
+  - `backend/app/services/recording_service.py`
+  - `backend/app/storage.py`
+  - `backend/app/mqtt_service.py`
+  - `backend/app/routes/audio_routes.py`
+  - `backend/app/routes/device_routes.py`
+  - `backend/tests/test_recording.py`
+  - `backend/tests/test_mqtt_integration.py`
+  - `main/microphone_recorder.cpp`, `main/microphone_recorder.h`
+  - `main/mqtt_manager.cpp`, `main/mqtt_manager.h`, `main/main.ino`, `main/config.h`
+  - `frontend/public/index.html`, `frontend/public/app.js`, `frontend/public/style.css`
+
+- Test:
+  - PASS — `npm run check`: 27 Backend tests, Node syntax, Python compile checks.
+  - PASS — local Mosquitto integration: 2 tests, including raw PCM start/chunk/end → WAV persistence.
+  - PASS — `hermes verify --json`: bootstrap, test, readiness HTTP 200, and cleanup.
+  - PASS — Arduino CLI 1.5.0 / ESP32 Core 3.3.11 compile: 1,106,800 bytes (84%), 53,384 bytes global (16%).
+  - PASS — live Backend/browser smoke: generated recording listed in Dashboard; stream returned `audio/wav`; WAV measured 16,000 Hz, mono, 16-bit, 800 frames; download returned `attachment`.
+
+- Còn thiếu / lưu ý:
+  - NOT VERIFIED — physical ESP32 + INMP441 capture, WiFi/MQTT-over-LAN, microphone signal quality, and speaker/browser E2E with hardware.
+  - Warning — legacy ESP32 I2S API deprecation and pre-existing ESP8266Audio narrowing warning; compile still exited 0.
+  - Runtime smoke artifact `rec_ui_f0a659.wav` and its metadata were removed after verification; no secrets were written.

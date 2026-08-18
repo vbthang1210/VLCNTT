@@ -33,6 +33,8 @@ void MqttManager::begin(const char* host, uint16_t port, const char* deviceId,
   snprintf(statusTopic_, sizeof(statusTopic_), "esp32/%s/status", deviceId_);
   snprintf(eventTopic_, sizeof(eventTopic_), "esp32/%s/event", deviceId_);
   snprintf(errorTopic_, sizeof(errorTopic_), "esp32/%s/error", deviceId_);
+  snprintf(audioStartTopic_, sizeof(audioStartTopic_), "esp32/%s/audio/start", deviceId_);
+  snprintf(audioEndTopic_, sizeof(audioEndTopic_), "esp32/%s/audio/end", deviceId_);
   // ArduinoMqttClient expects both values in milliseconds.
   client_.setKeepAliveInterval(MQTT_KEEPALIVE_SECONDS * 1000UL);
   client_.setConnectionTimeout(MQTT_SOCKET_TIMEOUT_SECONDS * 1000UL);
@@ -94,14 +96,23 @@ void MqttManager::connectIfDue() {
 
 bool MqttManager::publish(const char* topic, const char* payload,
                           bool retained) {
+  if (payload == nullptr) {
+    return false;
+  }
+  return publishBytes(topic, reinterpret_cast<const uint8_t*>(payload), strlen(payload), retained);
+}
+
+bool MqttManager::publishBytes(const char* topic, const uint8_t* payload,
+                               size_t length, bool retained) {
   if (!client_.connected() || topic == nullptr || payload == nullptr) {
     return false;
   }
-  const size_t length = strlen(payload);
   if (client_.beginMessage(topic, length, retained, 1, false) == 0) {
     return false;
   }
-  client_.print(payload);
+  if (client_.write(payload, length) != length) {
+    return false;
+  }
   return client_.endMessage() == 1;
 }
 
@@ -115,6 +126,46 @@ bool MqttManager::publishEvent(const char* payload) {
 
 bool MqttManager::publishError(const char* payload) {
   return publish(errorTopic_, payload, false);
+}
+
+bool MqttManager::publishAudioStart(const char* recordingId, uint32_t sampleRate,
+                                    uint8_t channels, uint8_t bitsPerSample) {
+  if (recordingId == nullptr || recordingId[0] == '\0') {
+    return false;
+  }
+  char payload[224];
+  snprintf(payload, sizeof(payload),
+           "{\"device_id\":\"%s\",\"recording_id\":\"%s\","
+           "\"sample_rate\":%lu,\"channels\":%u,\"bits_per_sample\":%u,"
+           "\"format\":\"pcm_s16le\"}",
+           deviceId_, recordingId, static_cast<unsigned long>(sampleRate), channels,
+           bitsPerSample);
+  return publish(audioStartTopic_, payload, false);
+}
+
+bool MqttManager::publishAudioChunk(const char* recordingId, uint32_t sequence,
+                                    const int16_t* samples, size_t sampleCount) {
+  if (recordingId == nullptr || recordingId[0] == '\0' || samples == nullptr || sampleCount == 0) {
+    return false;
+  }
+  char topic[160];
+  snprintf(topic, sizeof(topic), "esp32/%s/audio/chunk/%s/%lu", deviceId_, recordingId,
+           static_cast<unsigned long>(sequence));
+  return publishBytes(topic, reinterpret_cast<const uint8_t*>(samples), sampleCount * sizeof(int16_t), false);
+}
+
+bool MqttManager::publishAudioEnd(const char* recordingId, uint32_t totalChunks,
+                                  uint32_t sampleCount) {
+  if (recordingId == nullptr || recordingId[0] == '\0') {
+    return false;
+  }
+  char payload[192];
+  snprintf(payload, sizeof(payload),
+           "{\"device_id\":\"%s\",\"recording_id\":\"%s\","
+           "\"total_chunks\":%lu,\"sample_count\":%lu}",
+           deviceId_, recordingId, static_cast<unsigned long>(totalChunks),
+           static_cast<unsigned long>(sampleCount));
+  return publish(audioEndTopic_, payload, false);
 }
 
 void MqttManager::receiveCommand(int messageSize) {

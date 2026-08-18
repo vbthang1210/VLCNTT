@@ -412,6 +412,7 @@ IDLE
 BUFFERING
 PLAYING
 PAUSED
+RECORDING
 STOPPED
 ERROR
 ```
@@ -654,12 +655,16 @@ MQTT được truyền:
 - Event
 - Error
 - Metadata nhỏ
+- PCM recording chunks có kích thước giới hạn trên `esp32/{device_id}/audio/chunk/{recording_id}/{sequence}`
 
-MQTT KHÔNG truyền:
+MQTT không truyền File Audio hoàn chỉnh. Riêng luồng ghi âm được phép truyền
+PCM theo chunk để Backend ghép lại; MQTT vẫn không truyền WAV hoàn chỉnh.
+
+Playback MQTT không truyền:
 
 - nguyên File MP3
 - nguyên File WAV
-- binary audio lớn
+- binary audio lớn ngoài recording chunk contract
 
 ---
 
@@ -679,6 +684,7 @@ POST /api/v1/audio/tts
 GET  /api/v1/audio
 GET  /api/v1/audio/{audio_id}
 GET  /api/v1/audio/{audio_id}/stream
+GET  /api/v1/audio/{audio_id}/download
 ```
 
 ## Device
@@ -689,6 +695,8 @@ POST /api/v1/devices/{device_id}/play
 POST /api/v1/devices/{device_id}/pause
 POST /api/v1/devices/{device_id}/stop
 POST /api/v1/devices/{device_id}/volume
+POST /api/v1/devices/{device_id}/record/start
+POST /api/v1/devices/{device_id}/record/stop
 ```
 
 ---
@@ -914,6 +922,7 @@ Subscribe:
 esp32/+/status
 esp32/+/event
 esp32/+/error
+esp32/+/audio/#
 ```
 
 ## ESP32
@@ -930,6 +939,9 @@ Publish:
 esp32/{device_id}/status
 esp32/{device_id}/event
 esp32/{device_id}/error
+esp32/{device_id}/audio/start
+esp32/{device_id}/audio/chunk/{recording_id}/{sequence}
+esp32/{device_id}/audio/end
 ```
 
 ESP32 không được Publish vào command topic.
@@ -1129,3 +1141,37 @@ ESP32 → Backend Admin API
 22. Network operation phải có Timeout.
 23. Retry phải có giới hạn hoặc backoff.
 24. Không over-engineer version đầu.
+
+---
+
+# 33. Luồng ghi âm INMP441 → Web
+
+```text
+[Người nói vào Micro INMP441]
+          ↓ I2S RX
+       [ESP32]
+          ↓ START_RECORDING
+[JSON start marker qua MQTT]
+          ↓
+[PCM s16le chunks qua MQTT]
+  esp32/{device_id}/audio/chunk/{recording_id}/{sequence}
+          ↓
+[Mosquitto MQTT Broker]
+          ↓
+[Backend Python nhận và kiểm tra thứ tự chunk]
+          ├── Ghép PCM vào file tạm
+          ├── Đóng gói Header WAV: 16 kHz / Mono / 16-bit
+          ├── Lưu file thật: backend/storage/audio/rec_xxx.wav
+          └── Lưu metadata: backend/storage/metadata.json
+          ↓
+[GET /api/v1/audio cập nhật danh sách]
+          ↓
+[Web Dashboard]
+          ├── phát lại bằng <audio controls>
+          └── tải về qua /api/v1/audio/{audio_id}/download
+```
+
+- ESP32 gửi `START_RECORDING` và `STOP_RECORDING` qua command topic; ghi tự dừng theo thời lượng giới hạn.
+- MQTT chunk là raw PCM có sequence bắt đầu từ `0`; Backend bỏ qua duplicate cũ và từ chối chunk đến sai thứ tự.
+- Backend là source of truth cho WAV/metadata; Cloud nếu được cấu hình chỉ nhận metadata nhẹ.
+- Device status bổ sung `RECORDING`; hoàn tất phát event `RECORDING_COMPLETED`.

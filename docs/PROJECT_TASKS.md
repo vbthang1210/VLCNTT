@@ -288,3 +288,27 @@ Not verified:
 2. Configure a real TTS provider and run provider smoke tests.
 3. Configure Cloud metadata/notification providers and run Firestore/FCM smoke tests.
 4. Run browser E2E against the real device.
+
+## EPIC REC — INMP441 microphone recording
+
+### REC-01 — MQTT PCM chunk ingestion and WAV persistence
+Status: `IMPLEMENTED` / Backend tests `PASS` / Mosquitto-to-ESP32 `NOT VERIFIED`.
+
+- Backend subscribes to `esp32/+/audio/#`.
+- Ordered raw PCM chunks are assembled into a temporary file.
+- Final WAV is 16 kHz, mono, 16-bit and stored as `rec_xxx.wav`.
+- Local metadata is written to `backend/storage/metadata.json`.
+
+### REC-02 — Record control and Web playback/download
+Status: `IMPLEMENTED` / Backend API + Node syntax `PASS` / browser/device E2E `NOT VERIFIED`.
+
+- `POST /api/v1/devices/{device_id}/record/start` publishes `START_RECORDING`.
+- `POST /api/v1/devices/{device_id}/record/stop` publishes `STOP_RECORDING`.
+- Dashboard renders `<audio controls>` and a download link for every record.
+
+### REC-03 — ESP32 INMP441 capture
+Status: `IMPLEMENTED` in source / Arduino compile and hardware runtime `NOT VERIFIED`.
+
+- I2S1 capture with configurable INMP441 pins.
+- 512-sample PCM chunks, start/end markers, and bounded recording duration.
+- Requires Arduino-ESP32, ArduinoMqttClient and an actual INMP441/ESP32 wiring test.

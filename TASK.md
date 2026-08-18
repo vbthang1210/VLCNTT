@@ -1,7 +1,7 @@
 # Current Task
 
 ## Goal
-Implement a runnable development MVP across Backend, Frontend, MQTT boundary, and Arduino firmware without claiming hardware verification that has not run.
+Add the INMP441 microphone recording flow across Backend, Frontend, MQTT, and Arduino firmware without claiming hardware verification that has not run.
 
 ## Acceptance Criteria
 
@@ -10,13 +10,16 @@ Implement a runnable development MVP across Backend, Frontend, MQTT boundary, an
 - Backend can publish canonical MQTT commands when enabled.
 - Frontend talks only to Backend API.
 - ESP32 sketch compiles with Arduino-ESP32 and uses streaming audio APIs.
+- ESP32 can publish bounded 16 kHz mono 16-bit PCM recording chunks over the recording MQTT topics.
+- Backend assembles the chunks into `rec_xxx.wav` and persists local metadata.
+- Web Dashboard can play and download the resulting recording.
 - Tests and compile output are recorded honestly.
 
 ## Status
-PARTIAL — host MVP and provider adapters implemented; real provider calls and hardware remain unverified.
+PARTIAL — host recording flow and source changes implemented; Arduino compile, real MQTT-over-LAN, microphone capture, and browser/device E2E remain unverified.
 
 ## Current Issue
-No real TTS, Firestore, or FCM credentials/provider endpoint are configured. Development adapters use environment variables and fail closed when absent. Target ESP32 board and I2S hardware are also unavailable. The host-side Backend/Frontend/MQTT checks pass; this is not an end-to-end hardware/provider completion claim.
+No target ESP32/INMP441 board or LAN MQTT setup is available. The host-side Backend/Frontend/MQTT contract checks pass; this is not an end-to-end hardware completion claim. TTS, Firestore, and FCM remain separately unconfigured.
 
 ## Related Files
 
@@ -27,6 +30,8 @@ No real TTS, Firestore, or FCM credentials/provider endpoint are configured. Dev
 - `backend/`
 - `frontend/`
 - `main/`
+- `backend/tests/test_recording.py`
+- `PROJECT_RULES.md`
 
 ## Next Step
-Provide non-committed provider configuration (`TTS_*`, `CLOUD_*`, `NOTIFICATION_*`) to run real provider smoke tests. Separately attach ESP32/DAC, set local WiFi credentials, replace loopback MQTT host with the computer LAN IP, then run WiFi/MQTT/stream/I2S tests.
+Install/use Arduino CLI, attach ESP32 + INMP441, set local WiFi credentials, replace loopback MQTT host with the computer LAN IP, then run MQTT chunk capture and WAV playback tests. Provider smoke tests remain a separate optional step.
