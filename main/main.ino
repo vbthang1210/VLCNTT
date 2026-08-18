@@ -1,36 +1,21 @@
-#include "wifi_manager.h"
-#include "config.h"
-#include "mqtt_manager.h"
 #include "audio_player.h"
+#include "config.h"
+#include "led_manager.h"
+#include "mqtt_manager.h"
+#include "wifi_manager.h"
 
 #include <ArduinoJson.h>
+#include <string.h>
 
 namespace {
 
 WifiManager wifiManager;
 MqttManager mqttManager;
 AudioPlayer audioPlayer;
-
-// ============================================================
-// LED CONFIG
-// ============================================================
-// LED_PIN nên được khai báo trong config.h.
-// Ví dụ:
-// #define LED_PIN 2
-//
-// Nếu bạn chưa muốn thêm vào config.h, có thể tạm dùng:
-// const uint8_t LED_PIN = 2;
-// ============================================================
-
-bool ledState = false;
+LedManager ledManager(LED_PIN);
 
 bool lastWifiState = false;
 bool lastMqttState = false;
-
-
-// ============================================================
-// PUBLISH STATUS
-// ============================================================
 
 void publishState(
     const char* requestId,
@@ -40,41 +25,28 @@ void publishState(
     char payload[192];
 
     if (audioId != nullptr) {
-
         snprintf(
             payload,
             sizeof(payload),
-            "{\"device_id\":\"%s\","
-            "\"request_id\":\"%s\","
-            "\"audio_id\":\"%s\","
-            "\"status\":\"%s\"}",
+            "{\"device_id\":\"%s\",\"request_id\":\"%s\",\"audio_id\":\"%s\",\"status\":\"%s\"}",
             DEVICE_ID,
-            requestId,
+            requestId == nullptr ? "" : requestId,
             audioId,
             status
         );
-
     } else {
-
         snprintf(
             payload,
             sizeof(payload),
-            "{\"device_id\":\"%s\","
-            "\"request_id\":\"%s\","
-            "\"status\":\"%s\"}",
+            "{\"device_id\":\"%s\",\"request_id\":\"%s\",\"status\":\"%s\"}",
             DEVICE_ID,
-            requestId,
+            requestId == nullptr ? "" : requestId,
             status
         );
     }
 
     mqttManager.publishStatus(payload);
 }
-
-
-// ============================================================
-// PUBLISH ERROR
-// ============================================================
 
 void publishError(
     const char* requestId,
@@ -86,10 +58,7 @@ void publishError(
     snprintf(
         payload,
         sizeof(payload),
-        "{\"device_id\":\"%s\","
-        "\"request_id\":\"%s\","
-        "\"error_code\":\"%s\","
-        "\"message\":\"%s\"}",
+        "{\"device_id\":\"%s\",\"request_id\":\"%s\",\"error_code\":\"%s\",\"message\":\"%s\"}",
         DEVICE_ID,
         requestId == nullptr ? "" : requestId,
         code,
@@ -98,11 +67,6 @@ void publishError(
 
     mqttManager.publishError(payload);
 }
-
-
-// ============================================================
-// PUBLISH EVENT
-// ============================================================
 
 void publishEvent(
     const char* requestId,
@@ -114,10 +78,7 @@ void publishEvent(
     snprintf(
         payload,
         sizeof(payload),
-        "{\"device_id\":\"%s\","
-        "\"request_id\":\"%s\","
-        "\"audio_id\":\"%s\","
-        "\"event\":\"%s\"}",
+        "{\"device_id\":\"%s\",\"request_id\":\"%s\",\"audio_id\":\"%s\",\"event\":\"%s\"}",
         DEVICE_ID,
         requestId == nullptr ? "" : requestId,
         audioId == nullptr ? "" : audioId,
@@ -127,131 +88,69 @@ void publishEvent(
     mqttManager.publishEvent(payload);
 }
 
+void publishLightChanged(
+    const char* requestId,
+    const char* lightState
+) {
+    char payload[192];
 
-// ============================================================
-// LED CONTROL
-// ============================================================
+    snprintf(
+        payload,
+        sizeof(payload),
+        "{\"device_id\":\"%s\",\"request_id\":\"%s\",\"event\":\"LIGHT_CHANGED\",\"light_state\":\"%s\"}",
+        DEVICE_ID,
+        requestId == nullptr ? "" : requestId,
+        lightState
+    );
 
-void turnLightOn()
-{
-    digitalWrite(LED_PIN, HIGH);
-    ledState = true;
-
-    Serial.println("[LED] ON");
+    mqttManager.publishEvent(payload);
 }
-
-
-void turnLightOff()
-{
-    digitalWrite(LED_PIN, LOW);
-    ledState = false;
-
-    Serial.println("[LED] OFF");
-}
-
-
-void initializeLed()
-{
-    pinMode(LED_PIN, OUTPUT);
-
-    // Khi ESP32 khởi động:
-    // LED mặc định tắt.
-    turnLightOff();
-
-    Serial.print("[LED] Initialized on GPIO ");
-    Serial.println(LED_PIN);
-}
-
-
-// ============================================================
-// MQTT COMMAND HANDLER
-// ============================================================
 
 void onMqttCommand(
     const char* payload,
     size_t length
 ) {
-
     JsonDocument command;
 
     const DeserializationError parseError =
         deserializeJson(command, payload, length);
 
-
-    // --------------------------------------------------------
-    // JSON PARSE ERROR
-    // --------------------------------------------------------
-
     if (parseError) {
-
         publishError(
             "",
             "INVALID_JSON",
             "Command is not valid JSON"
         );
-
         return;
     }
 
-
-    // --------------------------------------------------------
-    // GET COMMON FIELDS
-    // --------------------------------------------------------
-
     const char* requestId =
         command["request_id"] | "";
-
     const char* action =
         command["command"] | "";
 
-
-    // --------------------------------------------------------
-    // REQUIRED FIELDS
-    // --------------------------------------------------------
-
     if (requestId[0] == '\0' || action[0] == '\0') {
-
         publishError(
             requestId,
             "COMMAND_FIELDS_MISSING",
             "request_id and command are required"
         );
-
         return;
     }
-
-
-    // ========================================================
-    // STOP AUDIO
-    // ========================================================
 
     if (strcmp(action, "STOP") == 0) {
-
         audioPlayer.stop();
-
-        publishState(
-            requestId,
-            "STOPPED"
-        );
-
+        publishState(requestId, "STOPPED");
         return;
     }
 
-
-    // ========================================================
-    // PAUSE AUDIO
-    // ========================================================
-
     if (strcmp(action, "PAUSE") == 0) {
-
         if (!audioPlayer.pause()) {
-
             publishError(
                 requestId,
                 "INVALID_STATE",
                 "PAUSE requires an active playback session"
             );
-
             return;
         }
 
@@ -260,19 +159,11 @@ void onMqttCommand(
             "PAUSED",
             audioPlayer.audioId()
         );
-
         return;
     }
 
-
-    // ========================================================
-    // SET VOLUME
-    // ========================================================
-
     if (strcmp(action, "SET_VOLUME") == 0) {
-
-        const int volume =
-            command["volume"] | -1;
+        const int volume = command["volume"] | -1;
 
         if (
             volume < 0 ||
@@ -281,59 +172,41 @@ void onMqttCommand(
                 static_cast<uint8_t>(volume)
             )
         ) {
-
             publishError(
                 requestId,
                 "VOLUME_INVALID",
                 "volume must be an integer from 0 to 100"
             );
-
             return;
         }
 
-        publishState(
-            requestId,
-            "IDLE"
-        );
-
+        publishState(requestId, "IDLE");
         return;
     }
 
-
-    // ========================================================
-    // PLAY AUDIO
-    // ========================================================
-
     if (strcmp(action, "PLAY") == 0) {
-
         const char* audioId =
             command["audio_id"] | "";
-
         const char* audioUrl =
             command["audio_url"] | "";
-
 
         if (
             audioId[0] == '\0' ||
             audioUrl[0] == '\0'
         ) {
-
             publishError(
                 requestId,
                 "PLAY_FIELDS_MISSING",
                 "audio_id and audio_url are required"
             );
-
             return;
         }
-
 
         publishState(
             requestId,
             "BUFFERING",
             audioId
         );
-
 
         if (
             !audioPlayer.play(
@@ -342,106 +215,53 @@ void onMqttCommand(
                 audioUrl
             )
         ) {
-
             publishState(
                 requestId,
                 "ERROR",
                 audioId
             );
-
             publishError(
                 requestId,
                 "AUDIO_DOWNLOAD_FAILED",
                 "Unable to open audio stream"
             );
-
             audioPlayer.takeFailed();
-
             return;
         }
-
 
         publishState(
             requestId,
             "PLAYING",
             audioId
         );
-
         return;
     }
 
-
-    // ========================================================
-    // LIGHT / LED CONTROL
-    // ========================================================
-
     if (strcmp(action, "LIGHT") == 0) {
-
         const char* state =
             command["state"] | "";
 
-
-        // ----------------------------------------------------
-        // LIGHT ON
-        // ----------------------------------------------------
-
         if (strcmp(state, "ON") == 0) {
-
-            turnLightOn();
-
-            publishState(
-                requestId,
-                "LIGHT_ON"
-            );
-
-            publishEvent(
-                requestId,
-                "LIGHT_CHANGED"
-            );
-
+            ledManager.turnOn();
+            Serial.println("[LED] ON");
+            publishLightChanged(requestId, "ON");
             return;
         }
-
-
-        // ----------------------------------------------------
-        // LIGHT OFF
-        // ----------------------------------------------------
 
         if (strcmp(state, "OFF") == 0) {
-
-            turnLightOff();
-
-            publishState(
-                requestId,
-                "LIGHT_OFF"
-            );
-
-            publishEvent(
-                requestId,
-                "LIGHT_CHANGED"
-            );
-
+            ledManager.turnOff();
+            Serial.println("[LED] OFF");
+            publishLightChanged(requestId, "OFF");
             return;
         }
-
-
-        // ----------------------------------------------------
-        // INVALID LIGHT STATE
-        // ----------------------------------------------------
 
         publishError(
             requestId,
             "LIGHT_STATE_INVALID",
             "state must be ON or OFF"
         );
-
         return;
     }
-
-
-    // ========================================================
-    // UNKNOWN COMMAND
-    // ========================================================
 
     publishError(
         requestId,
@@ -452,15 +272,9 @@ void onMqttCommand(
 
 } // namespace
 
-
-// ============================================================
-// SETUP
-// ============================================================
-
 void setup()
 {
     Serial.begin(115200);
-
     delay(100);
 
     Serial.println();
@@ -468,27 +282,15 @@ void setup()
     Serial.println("ESP32 Audio + Light Firmware");
     Serial.println("=================================");
 
+    ledManager.begin();
 
-    // --------------------------------------------------------
-    // LED
-    // --------------------------------------------------------
-
-    initializeLed();
-
-
-    // --------------------------------------------------------
-    // WIFI
-    // --------------------------------------------------------
+    Serial.print("[LED] Initialized on GPIO ");
+    Serial.println(LED_PIN);
 
     wifiManager.begin(
         WIFI_SSID,
         WIFI_PASSWORD
     );
-
-
-    // --------------------------------------------------------
-    // MQTT
-    // --------------------------------------------------------
 
     mqttManager.begin(
         MQTT_HOST,
@@ -500,44 +302,20 @@ void setup()
     );
 }
 
-
-// ============================================================
-// LOOP
-// ============================================================
-
 void loop()
 {
-    // --------------------------------------------------------
-    // WIFI
-    // --------------------------------------------------------
-
     wifiManager.update();
 
-
-    // --------------------------------------------------------
-    // MQTT + AUDIO
-    // --------------------------------------------------------
-
     if (wifiManager.isConnected()) {
-
         mqttManager.update();
-
         audioPlayer.update();
     }
-
-
-    // --------------------------------------------------------
-    // WIFI STATUS CHANGE
-    // --------------------------------------------------------
 
     const bool connected =
         wifiManager.isConnected();
 
-
     if (connected != lastWifiState) {
-
         lastWifiState = connected;
-
         Serial.println(
             connected
                 ? "WiFi: connected"
@@ -545,19 +323,11 @@ void loop()
         );
     }
 
-
-    // --------------------------------------------------------
-    // MQTT STATUS CHANGE
-    // --------------------------------------------------------
-
     const bool mqttConnected =
         mqttManager.isConnected();
 
-
     if (mqttConnected != lastMqttState) {
-
         lastMqttState = mqttConnected;
-
         Serial.println(
             mqttConnected
                 ? "MQTT: connected"
@@ -565,13 +335,7 @@ void loop()
         );
     }
 
-
-    // --------------------------------------------------------
-    // AUDIO COMPLETED
-    // --------------------------------------------------------
-
     if (audioPlayer.takeCompleted()) {
-
         publishState(
             audioPlayer.requestId(),
             "STOPPED",
@@ -585,13 +349,7 @@ void loop()
         );
     }
 
-
-    // --------------------------------------------------------
-    // AUDIO FAILED
-    // --------------------------------------------------------
-
     if (audioPlayer.takeFailed()) {
-
         publishState(
             audioPlayer.requestId(),
             "ERROR",
@@ -604,11 +362,6 @@ void loop()
             "Audio playback stopped after a stream or decoder failure"
         );
     }
-
-
-    // --------------------------------------------------------
-    // SMALL DELAY
-    // --------------------------------------------------------
 
     delay(10);
 }
