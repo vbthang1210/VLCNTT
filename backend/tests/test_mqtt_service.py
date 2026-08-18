@@ -94,6 +94,37 @@ def test_event_topic_is_stored_without_changing_device_status():
             },
         ),
     )
+
     state = store.get("esp32_01")
     assert state.status == "OFFLINE"
     assert state.last_event["event"] == "PLAY_COMPLETED"
+
+
+def test_light_changed_event_updates_light_state_without_overwriting_audio_status():
+    service, store = service_for_test()
+    store.update_status("esp32_01", "PLAYING", "play_001")
+
+    service._on_message(
+        None,
+        None,
+        message(
+            "esp32/esp32_01/event",
+            {
+                "device_id": "esp32_01",
+                "request_id": "ai_voice_001",
+                "event": "LIGHT_CHANGED",
+                "light_state": "ON",
+            },
+        ),
+    )
+
+    state = store.get("esp32_01")
+    assert state.status == "PLAYING"
+    assert state.request_id == "play_001"
+    assert state.light_state == "ON"
+    assert state.last_event == {
+        "device_id": "esp32_01",
+        "request_id": "ai_voice_001",
+        "event": "LIGHT_CHANGED",
+        "light_state": "ON",
+    }
