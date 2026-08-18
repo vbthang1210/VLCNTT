@@ -147,7 +147,7 @@
   - Added `VoiceCommandService` to convert accepted AI keyword predictions into device LIGHT commands.
   - Mapping is explicit: `bat -> LIGHT ON`, `tat -> LIGHT OFF`; `unknown`, `silence`, and low-confidence predictions do not publish commands.
   - Wired completed ESP32 audio sessions so the saved WAV is passed to AI inference after `audio/end`.
-  - MQTT publish success now registers the AI request as the device's current request so the resulting ESP32 status is not rejected as stale.
+  - MQTT publish success initially registered the AI request as the device current request; this behavior was corrected in the next task because LIGHT acknowledgement is event-based and must not interfere with audio request state.
   - AI/MQTT downstream failures do not invalidate or delete a WAV that was already received and saved successfully.
   - Added unit tests for ON/OFF mapping, no-action labels, low confidence, MQTT publish failure, and the completed-audio callback.
 
@@ -167,3 +167,35 @@
   - A valid `backend/storage/models/keyword_cnn.pt` is still required for real inference.
   - ESP32 microphone capture and MQTT `audio/start`, `audio/data`, `audio/end` publishing are still not implemented on the physical firmware path.
   - Physical voice -> AI -> MQTT -> LED end-to-end remains NOT VERIFIED.
+
+### 2026-08-18 - LIGHT acknowledgement and device light state
+
+- Đã làm:
+  - Added a development `LED_PIN` default in `main/config.h` and removed the duplicate pin macro from `led_manager.h`.
+  - `main.ino` now uses `LedManager` for the LIGHT command path.
+  - LIGHT commands no longer publish synthetic device statuses such as `LIGHT_ON` or `LIGHT_OFF`; ESP32 publishes `LIGHT_CHANGED` events with explicit `light_state` instead.
+  - Backend `DeviceState` now tracks `light_state` independently from audio/device `status`.
+  - Backend event ingestion preserves `request_id`, `audio_id`, and validates/persists `light_state`.
+  - Voice AI LIGHT commands no longer replace the device's current PLAY/STOP request, avoiding stale-response interference with audio playback.
+  - Aligned Python MQTT dependency with the code's Paho callback API v2 by requiring `paho-mqtt>=2.0,<3.0`.
+
+- File đã sửa:
+  - `main/config.h`
+  - `main/led_manager.h`
+  - `main/main.ino`
+  - `backend/app/mqtt_service.py`
+  - `backend/app/services/voice_command_service.py`
+  - `backend/app/__init__.py`
+  - `backend/requirements.txt`
+  - `backend/pyproject.toml`
+  - `backend/tests/test_mqtt_service.py`
+  - `backend/tests/test_voice_command_service.py`
+
+- Test:
+  - Added a regression test proving `LIGHT_CHANGED` updates `light_state` without overwriting a `PLAYING` device status/current playback request.
+  - Runtime tests and Arduino compile remain to be executed on the user's Windows/Arduino environment.
+
+- Còn thiếu / lưu ý:
+  - `LED_PIN=2` is only a development default; replace it with the real lamp/relay GPIO if hardware wiring differs.
+  - Physical LIGHT command acknowledgement remains NOT VERIFIED until the ESP32 is flashed and connected to Mosquitto.
+  - Next implementation step: INMP441 capture -> MQTT `audio/start`, `audio/data`, `audio/end`.
