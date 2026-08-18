@@ -10,6 +10,10 @@
 #define MQTT_PASSWORD ""
 #define DEVICE_ID "esp32_01"
 
+// Light output. GPIO 2 is a development default and is commonly connected
+// to an onboard LED on ESP32 dev boards. Change this for the real lamp/relay.
+#define LED_PIN 2
+
 // Default external I2S DAC wiring; change for the actual board/DAC.
 #define I2S_BCLK_PIN 26
 #define I2S_WS_PIN 25
