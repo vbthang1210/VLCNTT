@@ -1,6 +1,7 @@
 #include "audio_player.h"
 #include "config.h"
 #include "led_manager.h"
+#include "microphone_streamer.h"
 #include "mqtt_manager.h"
 #include "wifi_manager.h"
 
@@ -13,6 +14,7 @@ WifiManager wifiManager;
 MqttManager mqttManager;
 AudioPlayer audioPlayer;
 LedManager ledManager(LED_PIN);
+MicrophoneStreamer microphoneStreamer;
 
 bool lastWifiState = false;
 bool lastMqttState = false;
@@ -279,13 +281,16 @@ void setup()
 
     Serial.println();
     Serial.println("=================================");
-    Serial.println("ESP32 Audio + Light Firmware");
+    Serial.println("ESP32 Audio + Light + Voice Firmware");
     Serial.println("=================================");
 
     ledManager.begin();
-
     Serial.print("[LED] Initialized on GPIO ");
     Serial.println(LED_PIN);
+
+    if (!microphoneStreamer.begin()) {
+        Serial.println("[MIC] Voice capture disabled");
+    }
 
     wifiManager.begin(
         WIFI_SSID,
@@ -309,6 +314,14 @@ void loop()
     if (wifiManager.isConnected()) {
         mqttManager.update();
         audioPlayer.update();
+
+        // Capture voice only while speaker playback is inactive. The mic uses
+        // I2S1, but avoiding capture during playback also reduces acoustic
+        // feedback and prevents the model from hearing the device's own audio.
+        microphoneStreamer.update(
+            mqttManager,
+            !audioPlayer.isActive()
+        );
     }
 
     const bool connected =
