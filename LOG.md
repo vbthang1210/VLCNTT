@@ -140,3 +140,30 @@
   - Physical ESP32/DAC/I2S and browser interaction remain NOT VERIFIED.
 
 - Scope stopped after provider-adapter implementation and host verification; hardware and real external-provider smoke tests require user-supplied configuration.
+
+### 2026-08-18 - Voice AI command pipeline wiring
+
+- Đã làm:
+  - Added `VoiceCommandService` to convert accepted AI keyword predictions into device LIGHT commands.
+  - Mapping is explicit: `bat -> LIGHT ON`, `tat -> LIGHT OFF`; `unknown`, `silence`, and low-confidence predictions do not publish commands.
+  - Wired completed ESP32 audio sessions so the saved WAV is passed to AI inference after `audio/end`.
+  - MQTT publish success now registers the AI request as the device's current request so the resulting ESP32 status is not rejected as stale.
+  - AI/MQTT downstream failures do not invalidate or delete a WAV that was already received and saved successfully.
+  - Added unit tests for ON/OFF mapping, no-action labels, low confidence, MQTT publish failure, and the completed-audio callback.
+
+- File đã sửa/thêm:
+  - `backend/app/services/voice_command_service.py`
+  - `backend/app/services/audio_stream_service.py`
+  - `backend/app/services/__init__.py`
+  - `backend/app/__init__.py`
+  - `backend/tests/test_voice_command_service.py`
+  - `backend/tests/test_audio_completed_hook.py`
+
+- Test:
+  - Tests were added but could not be executed inside the assistant runtime because direct network access to clone the updated GitHub branch was unavailable.
+  - Required local verification: `python -m pytest tests/test_ai.py tests/test_voice_command_service.py tests/test_audio_completed_hook.py tests/test_mqtt_service.py -q`.
+
+- Còn thiếu / lưu ý:
+  - A valid `backend/storage/models/keyword_cnn.pt` is still required for real inference.
+  - ESP32 microphone capture and MQTT `audio/start`, `audio/data`, `audio/end` publishing are still not implemented on the physical firmware path.
+  - Physical voice -> AI -> MQTT -> LED end-to-end remains NOT VERIFIED.
