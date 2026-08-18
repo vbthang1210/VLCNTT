@@ -7,9 +7,8 @@
 MicrophoneStreamer::MicrophoneStreamer() = default;
 
 bool MicrophoneStreamer::begin() {
-  // The speaker path already uses the other I2S controller through
-  // AudioOutputI2S. Keep the microphone on I2S1 so capture and playback
-  // do not compete for the same controller.
+  // Keep microphone capture on I2S1 so it does not share the speaker's I2S
+  // controller used by AudioOutputI2S.
   if (!i2s_.setPort(I2S_NUM_1)) {
     Serial.println("[MIC] Failed to select I2S1");
     return false;
@@ -21,8 +20,8 @@ bool MicrophoneStreamer::begin() {
       -1,
       MIC_I2S_DIN_PIN);
 
-  // INMP441 outputs a 24-bit I2S word inside a 32-bit slot. The development
-  // wiring assumes L/R is tied to GND, therefore the left slot is selected.
+  // INMP441 sends signed 24-bit I2S samples in a 32-bit slot. The default
+  // wiring assumes L/R is tied to GND, so receive the left slot.
   ready_ = i2s_.begin(
       I2S_MODE_STD,
       MIC_SAMPLE_RATE,
@@ -78,8 +77,8 @@ bool MicrophoneStreamer::captureWindow(MqttManager& mqtt) {
     return false;
   }
 
-  // Read one chunk before opening the MQTT session. This prevents creating
-  // an empty backend session when the microphone/I2S input has no data.
+  // Read one chunk before opening an MQTT session so a dead/unwired mic does
+  // not create an empty session in the backend.
   const size_t firstBytes = i2s_.readBytes(
       reinterpret_cast<char*>(rawSamples),
       sizeof(rawSamples));
@@ -156,6 +155,21 @@ bool MicrophoneStreamer::captureWindow(MqttManager& mqtt) {
     mqtt.update();
   }
 
+  Serial.print("[MIC] Window captured | session=");
+  Serial.print(sessionId);
+  Serial.print(" samples=");
+  Serial.print(sentSamples);
+  Serial.print("/");
+  Serial.println(targetSamples);
+
+  // Do not finalize an incomplete MQTT audio session. That prevents the
+  // backend AI from classifying a truncated window. The backend expires an
+  // abandoned session and accepts a new one after its timeout.
+  if (sentSamples != targetSamples || !mqtt.isConnected()) {
+    Serial.println("[MIC] Window incomplete; audio/end not published");
+    return false;
+  }
+
   char endPayload[160];
   snprintf(
       endPayload,
@@ -164,16 +178,12 @@ bool MicrophoneStreamer::captureWindow(MqttManager& mqtt) {
       DEVICE_ID,
       sessionId);
 
-  const bool endPublished = mqtt.publishAudioEnd(endPayload);
+  if (!mqtt.publishAudioEnd(endPayload)) {
+    Serial.println("[MIC] Failed to publish audio/end");
+    return false;
+  }
 
-  Serial.print("[MIC] Window sent | session=");
-  Serial.print(sessionId);
-  Serial.print(" samples=");
-  Serial.print(sentSamples);
-  Serial.print("/");
-  Serial.println(targetSamples);
-
-  return endPublished && sentSamples == targetSamples;
+  return true;
 }
 
 void MicrophoneStreamer::convertToPcm16(
@@ -181,8 +191,7 @@ void MicrophoneStreamer::convertToPcm16(
     int16_t* output,
     size_t samples) {
   for (size_t index = 0; index < samples; ++index) {
-    // INMP441 provides a signed 24-bit sample in a 32-bit I2S word.
-    // Keeping the upper 16 bits gives signed PCM16 for the backend/model.
+    // Keep the upper 16 bits of the signed 24-bit microphone sample.
     output[index] = static_cast<int16_t>(input[index] >> 16);
   }
 }
