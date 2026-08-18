@@ -18,7 +18,7 @@ class FakeAIService:
 
 class FakeAudioRepository:
     def path_for(self, audio_id: str) -> Path:
-        return Path("/tmp") / f"{audio_id}.wav"
+        return Path("test_audio") / f"{audio_id}.wav"
 
 
 class FakeMqttService:
@@ -92,7 +92,9 @@ def test_bat_publishes_light_on():
     assert state.current_requests == [
         ("esp32_01", "ai_voice_001")
     ]
-    assert ai.paths == ["/tmp/voice_001.wav"]
+    assert ai.paths == [
+        str(Path("test_audio") / "voice_001.wav")
+    ]
 
 
 def test_tat_publishes_light_off():
