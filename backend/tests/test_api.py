@@ -62,6 +62,40 @@ def test_upload_list_and_stream_audio(client):
     assert streamed.data == wav_bytes()
 
 
+def test_delete_audio_removes_file_and_metadata(client, tmp_path):
+    response = client.post(
+        "/api/v1/audio/upload",
+        data={"file": (io.BytesIO(wav_bytes()), "tone.wav")},
+        content_type="multipart/form-data",
+    )
+    record = response.json["data"]
+
+    deleted = client.delete(f"/api/v1/audio/{record['audio_id']}")
+
+    assert deleted.status_code == 200
+    assert deleted.json["data"]["audio_id"] == record["audio_id"]
+    assert client.get(f"/api/v1/audio/{record['audio_id']}").status_code == 404
+    assert not (tmp_path / "audio" / record["filename"]).exists()
+
+
+def test_upload_returns_local_success_when_cloud_sync_fails(client):
+    class FailingCloud:
+        def save_metadata(self, record):
+            raise RuntimeError("cloud unavailable")
+
+    client.application.extensions["cloud_service"] = FailingCloud()
+    response = client.post(
+        "/api/v1/audio/upload",
+        data={"file": (io.BytesIO(wav_bytes()), "tone.wav")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 201
+    assert response.json["data"]["cloud_synced"] is False
+    record = response.json["data"]
+    assert (client.application.config["SETTINGS"].storage_path / record["filename"]).is_file()
+
+
 def test_unknown_audio_is_404(client):
     response = client.get("/api/v1/audio/audio_missing/stream")
     assert response.status_code == 404

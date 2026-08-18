@@ -1,4 +1,6 @@
-const BACKEND = window.BACKEND_BASE_URL || 'http://127.0.0.1:8000';
+const backendProtocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+const backendHost = window.location.hostname || '127.0.0.1';
+const BACKEND = window.BACKEND_BASE_URL || `${backendProtocol}//${backendHost}:8000`;
 const deviceId = document.querySelector('#deviceId');
 const audioList = document.querySelector('#audioList');
 const upload = document.querySelector('#upload');
@@ -11,12 +13,43 @@ const audioRecords = document.querySelector('#audioRecords');
 const recordDuration = document.querySelector('#recordDuration');
 const recordStart = document.querySelector('#recordStart');
 const recordStop = document.querySelector('#recordStop');
+const recordCountdown = document.querySelector('#recordCountdown');
 let activeRecordingId = null;
+let recordingEndsAt = 0;
+let countdownTimer = null;
 
 function showMessage(text) {
   if (message) {
     message.textContent = text;
   }
+}
+
+function updateRecordingCountdown() {
+  if (!recordCountdown) return;
+  if (!recordingEndsAt) {
+    recordCountdown.textContent = '';
+    return;
+  }
+  const remaining = Math.max(0, Math.ceil((recordingEndsAt - Date.now()) / 1000));
+  recordCountdown.textContent = remaining > 0 ? `Còn ${remaining}s` : 'Đang hoàn tất...';
+  if (remaining === 0 && countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+}
+
+function startRecordingCountdown(duration) {
+  if (countdownTimer) clearInterval(countdownTimer);
+  recordingEndsAt = Date.now() + duration * 1000;
+  updateRecordingCountdown();
+  countdownTimer = setInterval(updateRecordingCountdown, 250);
+}
+
+function stopRecordingCountdown(messageText = '') {
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = null;
+  recordingEndsAt = 0;
+  if (recordCountdown) recordCountdown.textContent = messageText;
 }
 
 async function api(path, options = {}) {
@@ -81,13 +114,35 @@ function renderAudioRecords(records) {
     player.src = streamUrl(record.audio_id);
     item.appendChild(player);
 
+    const actions = document.createElement('div');
+    actions.className = 'audio-actions';
+
     const download = document.createElement('a');
     download.className = 'download-link';
     download.href = downloadUrl(record.audio_id);
     download.textContent = 'Tải về';
     download.setAttribute('download', record.filename);
-    item.appendChild(download);
+    actions.appendChild(download);
+
+    const remove = document.createElement('button');
+    remove.className = 'delete-button';
+    remove.type = 'button';
+    remove.textContent = 'Xóa';
+    remove.addEventListener('click', () => deleteAudio(record.audio_id, record.filename));
+    actions.appendChild(remove);
+    item.appendChild(actions);
     audioRecords.appendChild(item);
+  }
+}
+
+async function deleteAudio(audioId, filename) {
+  if (!window.confirm(`Xóa tệp ${filename || audioId}?`)) return;
+  try {
+    await api(`/api/v1/audio/${encodeURIComponent(audioId)}`, { method: 'DELETE' });
+    showMessage(`Đã xóa ${filename || audioId}.`);
+    await refreshAudio();
+  } catch (error) {
+    showMessage(`Xóa audio thất bại: ${error.message}`);
   }
 }
 
@@ -140,6 +195,7 @@ async function refreshStatus() {
       activeRecordingId = null;
       recordStart.disabled = false;
       recordStop.disabled = true;
+      stopRecordingCountdown();
       await refreshAudio();
     }
   } catch (error) {
@@ -162,6 +218,7 @@ async function startRecording() {
     activeRecordingId = data.recording_id;
     recordStart.disabled = true;
     recordStop.disabled = false;
+    startRecordingCountdown(duration);
     showMessage(`Đã gửi lệnh ghi ${duration}s (${data.recording_id}).`);
     await refreshStatus();
   } catch (error) {
@@ -180,6 +237,7 @@ async function stopRecording() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ recording_id: activeRecordingId }),
     });
+    stopRecordingCountdown('Đang hoàn tất...');
     showMessage('Đã gửi lệnh dừng ghi; đang chờ Backend ghép WAV.');
   } catch (error) {
     showMessage(`Dừng ghi thất bại: ${error.message}`);

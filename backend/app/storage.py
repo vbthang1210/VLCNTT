@@ -42,6 +42,23 @@ class AudioRepository:
         with self._lock:
             return self._read_records().get(audio_id)
 
+    def delete(self, audio_id: str) -> dict | None:
+        with self._lock:
+            records = self._read_records()
+            record = records.get(audio_id)
+            if record is None:
+                return None
+            filename = record.get("filename")
+            if not isinstance(filename, str) or not filename:
+                raise RuntimeError("Invalid storage filename")
+            path = self.storage_path / filename
+            if path.parent != self.storage_path:
+                raise RuntimeError("Invalid storage path")
+            path.unlink(missing_ok=True)
+            records.pop(audio_id)
+            self._write_records(records)
+            return record
+
     def path_for(self, audio_id: str) -> Path:
         record = self.get(audio_id)
         if not record:

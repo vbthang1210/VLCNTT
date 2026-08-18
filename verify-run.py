@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 
 commands = [
+    (["node", "frontend/test_app_contract.js"], ROOT),
     (["npm", "--prefix", "frontend", "run", "check"], ROOT),
     (["uv", "run", "--directory", "backend", "pytest", "-q"], ROOT),
     (["uv", "run", "--directory", "backend", "python", "-m", "compileall", "-q", "app", "tests"], ROOT),

@@ -307,9 +307,33 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.audio-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .download-link {
   color: var(--primary);
   font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.delete-button {
+  padding: 4px 9px;
+  color: var(--danger);
+  border-color: #fecaca;
+  font-size: 0.78rem;
+}
+
+.delete-button:hover {
+  background: #fef2f2;
+}
+
+.record-countdown {
+  min-width: 90px;
+  color: var(--danger);
+  font-size: 0.82rem;
   font-weight: 600;
 }
 

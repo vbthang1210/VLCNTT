@@ -683,6 +683,7 @@ POST /api/v1/audio/upload
 POST /api/v1/audio/tts
 GET  /api/v1/audio
 GET  /api/v1/audio/{audio_id}
+DELETE /api/v1/audio/{audio_id}
 GET  /api/v1/audio/{audio_id}/stream
 GET  /api/v1/audio/{audio_id}/download
 ```

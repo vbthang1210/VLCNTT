@@ -89,6 +89,11 @@ void onMqttCommand(const char* payload, size_t length) {
                    "recording_id and duration_seconds are required");
       return;
     }
+    if (audioPlayer.isActive()) {
+      const char* interruptedAudioId = audioPlayer.audioId();
+      audioPlayer.stop();
+      publishEvent(requestId, "PLAYBACK_INTERRUPTED", interruptedAudioId);
+    }
     if (!microphoneRecorder.start(requestId, recordingId, duration)) {
       publishError(requestId, "MICROPHONE_START_FAILED",
                    "Unable to initialize INMP441 recording");
@@ -107,7 +112,13 @@ void onMqttCommand(const char* payload, size_t length) {
   }
 
   if (strcmp(action, "STOP") == 0) {
+    const bool recordingStopped = !microphoneRecorder.isRecording() || microphoneRecorder.stop();
     audioPlayer.stop();
+    if (!recordingStopped) {
+      publishError(requestId, "MICROPHONE_STOP_FAILED",
+                   "Unable to finish the active recording");
+      return;
+    }
     publishState(requestId, "STOPPED");
     return;
   }
@@ -127,7 +138,7 @@ void onMqttCommand(const char* payload, size_t length) {
       publishError(requestId, "VOLUME_INVALID", "volume must be an integer from 0 to 100");
       return;
     }
-    publishState(requestId, "IDLE");
+    publishEvent(requestId, "VOLUME_CHANGED");
     return;
   }
 
@@ -136,6 +147,11 @@ void onMqttCommand(const char* payload, size_t length) {
     const char* audioUrl = command["audio_url"] | "";
     if (audioId[0] == '\0' || audioUrl[0] == '\0') {
       publishError(requestId, "PLAY_FIELDS_MISSING", "audio_id and audio_url are required");
+      return;
+    }
+    if (microphoneRecorder.isRecording() && !microphoneRecorder.stop()) {
+      publishError(requestId, "MICROPHONE_STOP_FAILED",
+                   "Unable to finish the active recording before playback");
       return;
     }
     publishState(requestId, "BUFFERING", audioId);
@@ -207,5 +223,4 @@ void loop() {
                  "Audio chunk publishing or INMP441 capture failed");
   }
 
-  delay(10);
 }

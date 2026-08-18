@@ -5,7 +5,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Timer
 
 
 _RECORDING_ID = re.compile(r"^rec_[A-Za-z0-9_-]+$")
@@ -35,13 +35,50 @@ class RecordingSession:
 class PcmRecordingService:
     """Collect ordered PCM MQTT chunks and persist a Backend-owned WAV file."""
 
-    def __init__(self, repository, max_recording_seconds: int = 60):
+    def __init__(
+        self,
+        repository,
+        max_recording_seconds: int = 60,
+        session_timeout_seconds: float = 15,
+    ):
         self.repository = repository
         self.max_recording_seconds = max(1, int(max_recording_seconds))
+        self.session_timeout_seconds = max(0.1, float(session_timeout_seconds))
         self.temp_path = repository.storage_path / ".recordings"
         self.temp_path.mkdir(parents=True, exist_ok=True)
         self._sessions: dict[tuple[str, str], RecordingSession] = {}
+        self._expiry_timers: dict[tuple[str, str], Timer] = {}
+        self._expiry_generations: dict[tuple[str, str], int] = {}
         self._lock = Lock()
+        for stale_path in self.temp_path.glob(".*.pcm"):
+            stale_path.unlink(missing_ok=True)
+
+    def _schedule_expiry(self, key: tuple[str, str]) -> None:
+        previous = self._expiry_timers.pop(key, None)
+        if previous is not None:
+            previous.cancel()
+        generation = self._expiry_generations.get(key, 0) + 1
+        self._expiry_generations[key] = generation
+        timer = Timer(self.session_timeout_seconds, self._expire, args=(key, generation))
+        timer.daemon = True
+        self._expiry_timers[key] = timer
+        timer.start()
+
+    def _cancel_expiry(self, key: tuple[str, str]) -> None:
+        timer = self._expiry_timers.pop(key, None)
+        if timer is not None:
+            timer.cancel()
+        self._expiry_generations.pop(key, None)
+
+    def _expire(self, key: tuple[str, str], generation: int) -> None:
+        with self._lock:
+            if self._expiry_generations.get(key) != generation:
+                return
+            session = self._sessions.pop(key, None)
+            self._expiry_timers.pop(key, None)
+            self._expiry_generations.pop(key, None)
+        if session is not None:
+            session.pcm_path.unlink(missing_ok=True)
 
     def start(self, device_id: str, payload: dict) -> dict:
         if not isinstance(device_id, str) or not device_id:
@@ -81,6 +118,7 @@ class PcmRecordingService:
                 bits_per_sample=bits_per_sample,
                 max_bytes=max_bytes,
             )
+            self._schedule_expiry(key)
         return {
             "device_id": device_id,
             "recording_id": recording_id,
@@ -109,6 +147,7 @@ class PcmRecordingService:
                 output.write(payload)
             session.bytes_written += len(payload)
             session.next_sequence += 1
+            self._schedule_expiry(key)
         return True
 
     def finish(self, device_id: str, payload: dict) -> dict:
@@ -131,6 +170,7 @@ class PcmRecordingService:
             expected_samples = session.bytes_written // session.frame_bytes
             if sample_count is not None and sample_count != expected_samples:
                 raise RecordingError("sample_count does not match PCM payload")
+            self._cancel_expiry(key)
             self._sessions.pop(key)
 
         frames = session.bytes_written // session.frame_bytes
@@ -152,7 +192,9 @@ class PcmRecordingService:
 
     def abort(self, device_id: str, recording_id: str) -> None:
         with self._lock:
-            session = self._sessions.pop((device_id, recording_id), None)
+            key = (device_id, recording_id)
+            self._cancel_expiry(key)
+            session = self._sessions.pop(key, None)
         if session is not None:
             session.pcm_path.unlink(missing_ok=True)
 

@@ -46,7 +46,7 @@ def play(device_id):
     audio_id = body.get("audio_id")
     if not isinstance(audio_id, str) or not audio_id:
         return error("AUDIO_ID_REQUIRED", "audio_id is required", 400)
-    record = current_app.extensions["audio_repository"].get(audio_id)
+    record = current_app.extensions["audio_service"].get_audio(audio_id)
     if not record:
         return error("AUDIO_NOT_FOUND", "Audio file not found", 404)
     settings = current_app.config["SETTINGS"]

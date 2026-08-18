@@ -16,7 +16,7 @@ Add the INMP441 microphone recording flow across Backend, Frontend, MQTT, and Ar
 - Tests and compile output are recorded honestly.
 
 ## Status
-PARTIAL — host recording flow and source changes implemented; Arduino compile, real MQTT-over-LAN, microphone capture, and browser/device E2E remain unverified.
+PARTIAL — host recording flow, firmware safeguards, cleanup timeout, audio deletion, and responsive Dashboard changes are implemented; Arduino compile is PASS, while real MQTT-over-LAN, microphone capture, and browser/device E2E remain unverified.
 
 ## Current Issue
 No target ESP32/INMP441 board or LAN MQTT setup is available. The host-side Backend/Frontend/MQTT contract checks pass; this is not an end-to-end hardware completion claim. TTS, Firestore, and FCM remain separately unconfigured.

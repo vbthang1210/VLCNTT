@@ -174,3 +174,23 @@
   - NOT VERIFIED — physical ESP32 + INMP441 capture, WiFi/MQTT-over-LAN, microphone signal quality, and speaker/browser E2E with hardware.
   - Warning — legacy ESP32 I2S API deprecation and pre-existing ESP8266Audio narrowing warning; compile still exited 0.
   - Runtime smoke artifact `rec_ui_f0a659.wav` and its metadata were removed after verification; no secrets were written.
+
+### 2026-08-18 12:10 - Reliability review fixes
+
+- Đã sửa:
+  - Firmware oversized-command error now serializes `deviceId_`; `SET_VOLUME` emits `VOLUME_CHANGED` event without forcing `IDLE`.
+  - Playback and microphone recording are mutually exclusive; `START_RECORDING` interrupts playback, `PLAY` finishes recording first, and `STOP` stops both. Removed fixed `delay(10)` from the main loop.
+  - Added recording-session expiry timers with `RECORDING_SESSION_TIMEOUT_SECONDS=15`; stale `.pcm` files are removed on service startup.
+  - Added atomic local audio DELETE (file + metadata), wired `AudioService`/`AudioStreamService` into routes, and removed unused `MetadataService` stub.
+  - Upload now returns local `201` with `cloud_synced=false` when Cloud metadata sync fails after local persistence.
+  - Frontend Backend URL follows the serving hostname, recording UI has countdown, and every record has a delete action.
+  - Added firmware/frontend contract regression tests and included the frontend contract test in `verify-run.py`.
+
+- Verification:
+  - PASS — RED regression run observed all 9 new targeted failures before implementation.
+  - PASS — `npm run check`: 36 tests, Node syntax, frontend contract, Python compile checks.
+  - PASS — `hermes verify --json`: bootstrap, test, readiness HTTP 200.
+  - PASS — Arduino compile: 1,107,268 bytes (84%), 53,384 bytes global (16%).
+  - PASS — `git diff --check`.
+  - NOT VERIFIED — Browser visual smoke was blocked by Chrome remote-debugging approval; HTTP health and Node contract checks passed.
+  - NOT VERIFIED — physical ESP32/MQTT-over-LAN/microphone runtime. Test wrapper children still held ports 3000/8000 after wrapper termination; no forced `taskkill` was performed without user consent.

@@ -16,15 +16,26 @@ def error(code, message, status):
 
 @audio_blueprint.get("")
 def list_audio():
-    return ok(current_app.extensions["audio_repository"].list())
+    return ok(current_app.extensions["audio_service"].list_audio())
 
 
 @audio_blueprint.get("/<audio_id>")
 def get_audio(audio_id):
-    record = current_app.extensions["audio_repository"].get(audio_id)
+    record = current_app.extensions["audio_service"].get_audio(audio_id)
     if not record:
         return error("AUDIO_NOT_FOUND", "Audio file not found", 404)
     return ok(record)
+
+
+@audio_blueprint.delete("/<audio_id>")
+def delete_audio(audio_id):
+    try:
+        record = current_app.extensions["audio_service"].delete_audio(audio_id)
+    except (OSError, RuntimeError):
+        return error("AUDIO_DELETE_FAILED", "Audio file could not be deleted", 500)
+    if not record:
+        return error("AUDIO_NOT_FOUND", "Audio file not found", 404)
+    return ok(record, "Audio deleted")
 
 
 @audio_blueprint.post("/upload")
@@ -33,12 +44,17 @@ def upload_audio():
     if upload is None:
         return error("AUDIO_FILE_REQUIRED", "Audio file is required", 400)
     try:
-        record = current_app.extensions["audio_repository"].save_upload(upload)
-        record = current_app.extensions["cloud_service"].save_metadata(record)
+        record = current_app.extensions["audio_service"].save_upload(upload)
     except ValueError as exc:
         return error("AUDIO_INVALID", str(exc), 400)
     except Exception:
         return error("AUDIO_PROCESSING_FAILED", "Audio could not be processed", 422)
+    try:
+        record = current_app.extensions["cloud_service"].save_metadata(record)
+    except Exception:
+        current_app.logger.warning("Cloud metadata sync failed for %s", record["audio_id"])
+        record = {**record, "cloud_synced": False}
+        return ok(record, "Audio uploaded locally; Cloud sync pending", 201)
     return ok(record, "Audio uploaded", 201)
 
 
@@ -61,12 +77,13 @@ def tts_audio():
 
 @audio_blueprint.get("/<audio_id>/stream")
 def stream_audio(audio_id):
-    repository = current_app.extensions["audio_repository"]
-    record = repository.get(audio_id)
+    audio_service = current_app.extensions["audio_service"]
+    stream_service = current_app.extensions["audio_stream_service"]
+    record = audio_service.get_audio(audio_id)
     if not record:
         return error("AUDIO_NOT_FOUND", "Audio file not found", 404)
     try:
-        path = repository.path_for(audio_id)
+        path = stream_service.resolve(audio_id)
     except (FileNotFoundError, RuntimeError):
         return error("AUDIO_NOT_FOUND", "Audio file not found", 404)
     if not path.is_file():
@@ -77,12 +94,13 @@ def stream_audio(audio_id):
 
 @audio_blueprint.get("/<audio_id>/download")
 def download_audio(audio_id):
-    repository = current_app.extensions["audio_repository"]
-    record = repository.get(audio_id)
+    audio_service = current_app.extensions["audio_service"]
+    stream_service = current_app.extensions["audio_stream_service"]
+    record = audio_service.get_audio(audio_id)
     if not record:
         return error("AUDIO_NOT_FOUND", "Audio file not found", 404)
     try:
-        path = repository.path_for(audio_id)
+        path = stream_service.resolve(audio_id)
     except (FileNotFoundError, RuntimeError):
         return error("AUDIO_NOT_FOUND", "Audio file not found", 404)
     if not path.is_file():

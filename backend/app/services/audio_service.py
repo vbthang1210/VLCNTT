@@ -21,5 +21,8 @@ class AudioService:
     def save_upload(self, upload):
         return self.repository.save_upload(upload)
 
+    def delete_audio(self, audio_id: str):
+        return self.repository.delete(audio_id)
+
 
 __all__ = ["AudioService"]

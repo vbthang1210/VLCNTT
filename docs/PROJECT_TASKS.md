@@ -305,6 +305,9 @@ Status: `IMPLEMENTED` / Backend API + Node syntax `PASS` / browser/device E2E `N
 - `POST /api/v1/devices/{device_id}/record/start` publishes `START_RECORDING`.
 - `POST /api/v1/devices/{device_id}/record/stop` publishes `STOP_RECORDING`.
 - Dashboard renders `<audio controls>` and a download link for every record.
+- Dashboard derives Backend URL from the serving hostname, shows recording countdown, and exposes a DELETE action.
+- `DELETE /api/v1/audio/{audio_id}` removes the local file and metadata atomically.
+- Cloud metadata sync failure does not discard a successfully stored local upload.
 
 ### REC-03 — ESP32 INMP441 capture
 Status: `IMPLEMENTED` in source / Arduino compile and hardware runtime `NOT VERIFIED`.
@@ -312,3 +315,11 @@ Status: `IMPLEMENTED` in source / Arduino compile and hardware runtime `NOT VERI
 - I2S1 capture with configurable INMP441 pins.
 - 512-sample PCM chunks, start/end markers, and bounded recording duration.
 - Requires Arduino-ESP32, ArduinoMqttClient and an actual INMP441/ESP32 wiring test.
+
+### REC-04 — Reliability and arbitration safeguards
+Status: `IMPLEMENTED` / host regression tests `PASS` / hardware runtime `NOT VERIFIED`.
+
+- Playback and recording are mutually exclusive; `STOP` stops both.
+- Volume changes publish an event without forcing the device to `IDLE`.
+- Oversized command errors use the configured runtime device ID.
+- Incomplete recording sessions expire after `RECORDING_SESSION_TIMEOUT_SECONDS` (default 15 seconds).

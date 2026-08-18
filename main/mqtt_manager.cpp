@@ -173,7 +173,12 @@ void MqttManager::receiveCommand(int messageSize) {
     while (client_.available()) {
       client_.read();
     }
-    publishError("{\"device_id\":\"esp32_01\",\"error_code\":\"COMMAND_TOO_LARGE\",\"message\":\"Command payload exceeds buffer\"}");
+    char errorPayload[192];
+    snprintf(errorPayload, sizeof(errorPayload),
+             "{\"device_id\":\"%s\",\"error_code\":\"COMMAND_TOO_LARGE\","
+             "\"message\":\"Command payload exceeds buffer\"}",
+             deviceId_ == nullptr ? "" : deviceId_);
+    publishError(errorPayload);
     return;
   }
   static char payload[COMMAND_BUFFER_SIZE];

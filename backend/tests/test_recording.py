@@ -4,6 +4,7 @@ import io
 import json
 import struct
 import sys
+import time
 import wave
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import create_app
+from app.services.recording_service import PcmRecordingService, RecordingError
 
 
 @pytest.fixture()
@@ -153,3 +155,27 @@ def test_audio_download_returns_attachment(app):
     assert downloaded.status_code == 200
     assert downloaded.mimetype == "audio/wav"
     assert "attachment" in downloaded.headers["Content-Disposition"]
+
+
+def test_incomplete_recording_is_removed_after_timeout(app):
+    repository = app.extensions["audio_repository"]
+    service = PcmRecordingService(repository, max_recording_seconds=60, session_timeout_seconds=0.1)
+    service.start(
+        "esp32_01",
+        {
+            "device_id": "esp32_01",
+            "recording_id": "rec_timeout",
+            "sample_rate": 16000,
+            "channels": 1,
+            "bits_per_sample": 16,
+            "duration_seconds": 1,
+        },
+    )
+    temp_path = repository.storage_path / ".recordings" / ".rec_timeout.pcm"
+    assert temp_path.is_file()
+
+    time.sleep(0.25)
+
+    with pytest.raises(RecordingError, match="not active"):
+        service.append_chunk("esp32_01", "rec_timeout", 0, b"\x00\x00")
+    assert not temp_path.exists()

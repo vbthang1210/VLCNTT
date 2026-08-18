@@ -11,7 +11,6 @@ from .services import (
     AudioService,
     AudioStreamService,
     CloudService,
-    MetadataService,
     NotificationService,
     PcmRecordingService,
     TTSService,
@@ -36,8 +35,8 @@ def create_app(overrides: dict | None = None) -> Flask:
     app.extensions["recording_service"] = PcmRecordingService(
         repository,
         settings.recording_max_seconds,
+        settings.recording_session_timeout_seconds,
     )
-    app.extensions["metadata_service"] = MetadataService(settings.cloud_provider)
     app.extensions["cloud_service"] = CloudService(
         settings.cloud_provider,
         settings.cloud_project_id,
@@ -75,7 +74,7 @@ def create_app(overrides: dict | None = None) -> Flask:
     def add_cors(response):
         response.headers["Access-Control-Allow-Origin"] = settings.cors_origin
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+        response.headers["Access-Control-Allow-Methods"] = "GET,POST,DELETE,OPTIONS"
         return response
 
     @app.get("/health")
