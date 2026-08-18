@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
+from typing import Callable
 
 from ..storage import AudioRepository
 from .audio_service import get_pcm_info, pcm_to_wav
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -55,12 +59,20 @@ class AudioStreamService:
         self,
         repository: AudioRepository,
         session_timeout: int = 5,
+        on_completed: Callable[[dict], object] | None = None,
     ):
         self.repository = repository
         self.session_timeout = session_timeout
+        self.on_completed = on_completed
 
         # device_id -> AudioSession
         self.sessions: dict[str, AudioSession] = {}
+
+    def set_completed_handler(
+        self,
+        handler: Callable[[dict], object] | None,
+    ) -> None:
+        self.on_completed = handler
 
     # =========================================================
     # START
@@ -261,6 +273,19 @@ class AudioStreamService:
         )
 
         del self.sessions[device_id]
+
+        # AI / automation work is deliberately triggered only after the WAV
+        # has been saved successfully. A downstream failure must not make the
+        # completed audio session appear to have failed.
+        if self.on_completed is not None:
+            try:
+                self.on_completed(record)
+            except Exception:
+                logger.exception(
+                    "[AUDIO] Completed handler failed | device=%s | session=%s",
+                    device_id,
+                    session_id,
+                )
 
         return record
 
