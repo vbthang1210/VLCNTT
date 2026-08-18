@@ -5,6 +5,7 @@ from .cloud_service import CloudNotConfigured, CloudService
 from .metadata_service import MetadataService
 from .notification_service import NotificationNotConfigured, NotificationService
 from .tts_service import TTSNotConfigured, TTSService
+from .voice_command_service import VoiceCommandResult, VoiceCommandService
 
 __all__ = [
     "AIService",
@@ -19,4 +20,6 @@ __all__ = [
     "NotificationNotConfigured",
     "TTSNotConfigured",
     "TTSService",
+    "VoiceCommandResult",
+    "VoiceCommandService",
 ]
