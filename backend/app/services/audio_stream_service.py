@@ -16,28 +16,18 @@ logger = logging.getLogger(__name__)
 class AudioSession:
     device_id: str
     session_id: str
-
     sample_rate: int
     channels: int
     sample_width: int
     encoding: str
-
-    buffer: bytearray = field(
-        default_factory=bytearray
-    )
-
+    buffer: bytearray = field(default_factory=bytearray)
     packet_count: int = 0
-    started_at: float = field(
-        default_factory=time.time
-    )
-    last_packet_at: float = field(
-        default_factory=time.time
-    )
+    started_at: float = field(default_factory=time.time)
+    last_packet_at: float = field(default_factory=time.time)
 
     def append(self, payload: bytes) -> None:
         if not payload:
             return
-
         self.buffer.extend(payload)
         self.packet_count += 1
         self.last_packet_at = time.time()
@@ -47,14 +37,10 @@ class AudioSession:
         return len(self.buffer)
 
     def expired(self, timeout: int) -> bool:
-        return (
-            time.time() - self.last_packet_at
-            > timeout
-        )
+        return time.time() - self.last_packet_at > timeout
 
 
 class AudioStreamService:
-
     def __init__(
         self,
         repository: AudioRepository,
@@ -64,8 +50,6 @@ class AudioStreamService:
         self.repository = repository
         self.session_timeout = session_timeout
         self.on_completed = on_completed
-
-        # device_id -> AudioSession
         self.sessions: dict[str, AudioSession] = {}
 
     def set_completed_handler(
@@ -74,19 +58,11 @@ class AudioStreamService:
     ) -> None:
         self.on_completed = handler
 
-    # =========================================================
-    # START
-    # =========================================================
-
     def start(self, payload: bytes) -> AudioSession:
         try:
-            data = json.loads(
-                payload.decode("utf-8")
-            )
+            data = json.loads(payload.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError(
-                "Invalid audio START payload"
-            ) from exc
+            raise ValueError("Invalid audio START payload") from exc
 
         required_fields = (
             "device_id",
@@ -96,26 +72,30 @@ class AudioStreamService:
             "sample_width",
             "encoding",
         )
-
         for field_name in required_fields:
             if field_name not in data:
-                raise ValueError(
-                    f"Missing START field: {field_name}"
-                )
+                raise ValueError(f"Missing START field: {field_name}")
 
         device_id = str(data["device_id"])
         session_id = str(data["session_id"])
 
         if not device_id:
             raise ValueError("device_id is empty")
-
         if not session_id:
             raise ValueError("session_id is empty")
 
+        existing = self.sessions.get(device_id)
+        if existing is not None and existing.expired(self.session_timeout):
+            logger.warning(
+                "[AUDIO] Dropping expired session | device=%s | session=%s",
+                device_id,
+                existing.session_id,
+            )
+            del self.sessions[device_id]
+
         if device_id in self.sessions:
             raise ValueError(
-                f"Device already has an active "
-                f"audio session: {device_id}"
+                f"Device already has an active audio session: {device_id}"
             )
 
         sample_rate = int(data["sample_rate"])
@@ -125,17 +105,12 @@ class AudioStreamService:
 
         if sample_rate <= 0:
             raise ValueError("Invalid sample_rate")
-
         if channels <= 0:
             raise ValueError("Invalid channels")
-
         if sample_width <= 0:
             raise ValueError("Invalid sample_width")
-
         if encoding != "pcm_s16le":
-            raise ValueError(
-                f"Unsupported audio encoding: {encoding}"
-            )
+            raise ValueError(f"Unsupported audio encoding: {encoding}")
 
         session = AudioSession(
             device_id=device_id,
@@ -145,104 +120,61 @@ class AudioStreamService:
             sample_width=sample_width,
             encoding=encoding,
         )
-
         self.sessions[device_id] = session
-
         return session
-
-    # =========================================================
-    # DATA
-    # =========================================================
 
     def receive_data(
         self,
         device_id: str,
         payload: bytes,
     ) -> None:
-
         session = self.sessions.get(device_id)
-
         if session is None:
             raise ValueError(
-                f"Received audio DATA without "
-                f"an active session: {device_id}"
+                f"Received audio DATA without an active session: {device_id}"
             )
-
         if not payload:
             return
 
-        new_size = (
-            session.size + len(payload)
-        )
-
+        new_size = session.size + len(payload)
         if new_size > self.repository.max_audio_size:
             raise ValueError(
-                "Audio session exceeds maximum "
-                "allowed audio size"
+                "Audio session exceeds maximum allowed audio size"
             )
 
         session.append(payload)
 
-    # =========================================================
-    # END
-    # =========================================================
-
-    def end(
-        self,
-        payload: bytes,
-    ) -> dict:
-
+    def end(self, payload: bytes) -> dict:
         try:
-            data = json.loads(
-                payload.decode("utf-8")
-            )
+            data = json.loads(payload.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError(
-                "Invalid audio END payload"
-            ) from exc
+            raise ValueError("Invalid audio END payload") from exc
 
         if "device_id" not in data:
-            raise ValueError(
-                "Missing END field: device_id"
-            )
-
+            raise ValueError("Missing END field: device_id")
         if "session_id" not in data:
-            raise ValueError(
-                "Missing END field: session_id"
-            )
+            raise ValueError("Missing END field: session_id")
 
         device_id = str(data["device_id"])
         session_id = str(data["session_id"])
-
         session = self.sessions.get(device_id)
 
         if session is None:
-            raise ValueError(
-                f"No active session for device: "
-                f"{device_id}"
-            )
-
+            raise ValueError(f"No active session for device: {device_id}")
         if session.session_id != session_id:
             raise ValueError(
-                "END session_id does not match "
-                "the active session"
+                "END session_id does not match the active session"
             )
-
         if not session.buffer:
-            raise ValueError(
-                "Audio session contains no PCM data"
-            )
+            raise ValueError("Audio session contains no PCM data")
 
         pcm_data = bytes(session.buffer)
-
-        # Validate PCM before creating WAV.
         pcm_info = get_pcm_info(
             pcm_data=pcm_data,
             sample_rate=session.sample_rate,
             channels=session.channels,
             sample_width=session.sample_width,
         )
-
         wav_data = pcm_to_wav(
             pcm_data=pcm_data,
             sample_rate=session.sample_rate,
@@ -250,10 +182,7 @@ class AudioStreamService:
             sample_width=session.sample_width,
         )
 
-        filename = (
-            f"{session.session_id}.wav"
-        )
-
+        filename = f"{session.session_id}.wav"
         record = self.repository.save_bytes(
             payload=wav_data,
             filename=filename,
@@ -274,9 +203,6 @@ class AudioStreamService:
 
         del self.sessions[device_id]
 
-        # AI / automation work is deliberately triggered only after the WAV
-        # has been saved successfully. A downstream failure must not make the
-        # completed audio session appear to have failed.
         if self.on_completed is not None:
             try:
                 self.on_completed(record)
@@ -289,34 +215,13 @@ class AudioStreamService:
 
         return record
 
-    # =========================================================
-    # TIMEOUT
-    # =========================================================
-
     def cleanup_expired(self) -> list[str]:
-
         expired_devices = []
-
-        for device_id, session in list(
-            self.sessions.items()
-        ):
-            if session.expired(
-                self.session_timeout
-            ):
-                expired_devices.append(
-                    device_id
-                )
-
+        for device_id, session in list(self.sessions.items()):
+            if session.expired(self.session_timeout):
+                expired_devices.append(device_id)
                 del self.sessions[device_id]
-
         return expired_devices
 
-    # =========================================================
-    # STATUS
-    # =========================================================
-
-    def has_active_session(
-        self,
-        device_id: str,
-    ) -> bool:
+    def has_active_session(self, device_id: str) -> bool:
         return device_id in self.sessions
