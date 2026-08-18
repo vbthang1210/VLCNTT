@@ -1,0 +1,28 @@
+{
+  "audio_a493cf54": {
+    "id": "audio_a493cf54",
+    "audio_id": "audio_a493cf54",
+    "filename": "audio_a493cf54.wav",
+    "original_filename": "e2e_test.wav",
+    "format": "wav",
+    "size": 1644,
+    "status": "READY",
+    "duration": 0.1,
+    "sample_rate": 8000,
+    "channels": 1,
+    "bits_per_sample": 16
+  },
+  "audio_666857b4": {
+    "id": "audio_666857b4",
+    "audio_id": "audio_666857b4",
+    "filename": "audio_666857b4.wav",
+    "original_filename": "e2e_test.wav",
+    "format": "wav",
+    "size": 1644,
+    "status": "READY",
+    "duration": 0.1,
+    "sample_rate": 8000,
+    "channels": 1,
+    "bits_per_sample": 16
+  }
+}
