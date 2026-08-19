@@ -58,7 +58,7 @@ class Settings:
             storage_path=storage,
             metadata_path=metadata,
             max_audio_size=int(values.get("MAX_AUDIO_SIZE", str(20 * 1024 * 1024))),
-            recording_default_seconds=int(values.get("RECORDING_DEFAULT_SECONDS", "5")),
+            recording_default_seconds=int(values.get("RECORDING_DEFAULT_SECONDS", "1")),
             recording_max_seconds=int(values.get("RECORDING_MAX_SECONDS", "60")),
             recording_session_timeout_seconds=int(
                 values.get("RECORDING_SESSION_TIMEOUT_SECONDS", "15")

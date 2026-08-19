@@ -1,0 +1,19 @@
+{
+  "rec_65de4b": {
+    "id": "rec_65de4b",
+    "audio_id": "rec_65de4b",
+    "filename": "rec_65de4b.wav",
+    "original_filename": "rec_65de4b.wav",
+    "format": "wav",
+    "status": "READY",
+    "sample_rate": 16000,
+    "channels": 1,
+    "bits_per_sample": 16,
+    "source": "INMP441",
+    "device_id": "esp32_test_65de4b",
+    "duration": 1.0,
+    "sample_count": 16000,
+    "recorded_at": "2026-08-19T10:23:50.926411+00:00",
+    "size": 32044
+  }
+}

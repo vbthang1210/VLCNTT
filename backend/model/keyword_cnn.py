@@ -70,3 +70,6 @@ class KeywordCNN(nn.Module):
         x = self.classifier(x)
 
         return x
+    
+def build_model(num_classes: int) -> KeywordCNN:
+    return KeywordCNN(num_classes=num_classes)
