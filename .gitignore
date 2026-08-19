@@ -18,3 +18,7 @@ dataset/processed/
 
 # Local hardware configuration override
 main/config.local.h
+
+# 
+dataset/raw/
+dataset/processed/
