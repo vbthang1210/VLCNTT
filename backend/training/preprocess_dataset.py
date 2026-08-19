@@ -159,22 +159,86 @@ def convert_to_model_format(waveform, source_rate: int, torchaudio):
 
 
 def split_into_model_windows(waveform, torch) -> list:
-    """Split audio into consecutive one-second windows and pad the last one."""
-    from training.config import NUM_SAMPLES
+    """
+    Split audio into consecutive one-second windows.
+
+    Full 1-second windows are kept normally.
+
+    The final partial window:
+    - keep + pad if it contains at least 50% of a full window
+    - discard if it is shorter than 50%
+
+    This avoids producing samples such as:
+        0.05s real audio + 0.95s silence
+    with a keyword label.
+    """
+    from training.config import NUM_SAMPLES, SAMPLE_RATE
+
+    MIN_WINDOW_RATIO = 0.5
+    min_window_samples = int(NUM_SAMPLES * MIN_WINDOW_RATIO)
 
     windows = []
     total_samples = waveform.shape[-1]
+
     for start in range(0, total_samples, NUM_SAMPLES):
+
         window = waveform[..., start : start + NUM_SAMPLES]
-        if window.shape[-1] < NUM_SAMPLES:
+
+        window_samples = window.shape[-1]
+
+        # ----------------------------------------------------
+        # Full window
+        # ----------------------------------------------------
+
+        if window_samples == NUM_SAMPLES:
+            pass
+
+        # ----------------------------------------------------
+        # Partial window >= 0.5 second
+        # Keep it and pad to exactly one second
+        # ----------------------------------------------------
+
+        elif window_samples >= min_window_samples:
+
             window = torch.nn.functional.pad(
                 window,
-                (0, NUM_SAMPLES - window.shape[-1]),
+                (
+                    0,
+                    NUM_SAMPLES - window_samples,
+                ),
             )
+
+        # ----------------------------------------------------
+        # Partial window < 0.5 second
+        # Discard it
+        # ----------------------------------------------------
+
+        else:
+
+            print(
+                "[SKIP SHORT WINDOW] "
+                f"{window_samples} samples "
+                f"({window_samples / SAMPLE_RATE:.3f}s)"
+            )
+
+            continue
+
+        # ----------------------------------------------------
+        # Peak normalization
+        # ----------------------------------------------------
+
         peak = window.abs().max()
+
         if peak > 0:
             window = window / peak
-        windows.append(window.clamp(-1.0, 1.0))
+
+        windows.append(
+            window.clamp(
+                -1.0,
+                1.0,
+            )
+        )
+
     return windows
 
 

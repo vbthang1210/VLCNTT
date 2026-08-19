@@ -1,102 +1,640 @@
-from __future__ import annotations
+import random
 
-import argparse
-import sys
-from pathlib import Path
+import numpy as np
+import torch
+from torch import nn
+from torch.utils.data import DataLoader, random_split
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from model.keyword_cnn import KeywordCNN
 
-from training.config import NUM_EPOCHS, PROCESSED_DATASET_DIR
+from training.config import (
+    MODEL_PATH,
+    NUM_CLASSES,
+    CLASS_NAMES,
+    PROCESSED_DATASET_DIR,
+)
 
-DEFAULT_DATASET_DIR = PROCESSED_DATASET_DIR
+from training.dataset import KeywordDataset
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET_DIR)
-    parser.add_argument("--epochs", type=int, default=NUM_EPOCHS)
-    args = parser.parse_args()
-    if args.epochs < 1:
-        parser.error("--epochs must be >= 1")
+# ============================================================
+# Training configuration
+# ============================================================
 
-    try:
-        import torch
-        from torch import nn
-        from torch.utils.data import DataLoader, random_split
-    except ImportError as exc:
-        raise RuntimeError("Install backend/requirements-ai.txt first") from exc
+BATCH_SIZE = 32
+EPOCHS = 30
 
-    from model.keyword_cnn import build_model
-    from training.config import (
-        BATCH_SIZE,
-        CLASS_NAMES,
-        LEARNING_RATE,
-        MODEL_DIR,
-        MODEL_PATH,
-        MODEL_VERSION,
-        NUM_CLASSES,
-        WEIGHT_DECAY,
+LEARNING_RATE = 1e-3
+WEIGHT_DECAY = 1e-4
+
+RANDOM_SEED = 42
+
+TRAIN_RATIO = 0.80
+VALIDATION_RATIO = 0.10
+TEST_RATIO = 0.10
+
+
+# ============================================================
+# Reproducibility
+# ============================================================
+
+def set_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+# ============================================================
+# Device
+# ============================================================
+
+def get_device() -> torch.device:
+    """
+    Priority:
+        CUDA
+        MPS
+        CPU
+    """
+
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+
+    if (
+        hasattr(torch.backends, "mps")
+        and torch.backends.mps.is_available()
+    ):
+        return torch.device("mps")
+
+    return torch.device("cpu")
+
+
+# ============================================================
+# Dataset splitting
+# ============================================================
+
+def split_dataset(dataset: KeywordDataset):
+    """
+    Split:
+        80% train
+        10% validation
+        10% test
+
+    Note:
+        This is still sample-level random splitting.
+        Augmented versions of one original recording may still
+        appear in different splits. Group-based splitting should
+        be added before official model evaluation.
+    """
+
+    dataset_size = len(dataset)
+
+    if dataset_size < 3:
+        raise ValueError(
+            "Dataset must contain at least 3 samples."
+        )
+
+    train_size = int(
+        dataset_size * TRAIN_RATIO
     )
-    from training.dataset import KeywordDataset
 
-    dataset = KeywordDataset(args.dataset)
-    validation_size = max(1, int(len(dataset) * 0.2))
-    train_size = len(dataset) - validation_size
-    if train_size < 1:
-        raise RuntimeError("Dataset needs at least two samples")
-    train_set, validation_set = random_split(
+    validation_size = int(
+        dataset_size * VALIDATION_RATIO
+    )
+
+    test_size = (
+        dataset_size
+        - train_size
+        - validation_size
+    )
+
+    if validation_size == 0:
+        validation_size = 1
+        train_size -= 1
+
+    if test_size == 0:
+        test_size = 1
+        train_size -= 1
+
+    if train_size <= 0:
+        raise ValueError(
+            "Dataset is too small after splitting."
+        )
+
+    generator = torch.Generator().manual_seed(
+        RANDOM_SEED
+    )
+
+    train_set, validation_set, test_set = random_split(
         dataset,
-        [train_size, validation_size],
-        generator=torch.Generator().manual_seed(42),
+        [
+            train_size,
+            validation_size,
+            test_size,
+        ],
+        generator=generator,
     )
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = build_model(NUM_CLASSES).to(device)
+
+    return (
+        train_set,
+        validation_set,
+        test_set,
+    )
+
+
+# ============================================================
+# DataLoaders
+# ============================================================
+
+def create_data_loaders(
+    train_set,
+    validation_set,
+    test_set,
+):
+
+    train_loader = DataLoader(
+        train_set,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+    )
+
+    validation_loader = DataLoader(
+        validation_set,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+    )
+
+    test_loader = DataLoader(
+        test_set,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+    )
+
+    return (
+        train_loader,
+        validation_loader,
+        test_loader,
+    )
+
+
+# ============================================================
+# Train one epoch
+# ============================================================
+
+def train_one_epoch(
+    model: nn.Module,
+    loader: DataLoader,
+    optimizer: torch.optim.Optimizer,
+    criterion: nn.Module,
+    device: torch.device,
+):
+
+    model.train()
+
+    total_loss = 0.0
+    correct = 0
+    total = 0
+
+    for features, labels in loader:
+
+        features = features.to(device)
+        labels = labels.to(device)
+
+        optimizer.zero_grad()
+
+        logits = model(features)
+
+        loss = criterion(
+            logits,
+            labels,
+        )
+
+        loss.backward()
+
+        optimizer.step()
+
+        batch_size = labels.size(0)
+
+        total_loss += (
+            loss.item()
+            * batch_size
+        )
+
+        predictions = logits.argmax(
+            dim=1
+        )
+
+        correct += (
+            predictions == labels
+        ).sum().item()
+
+        total += batch_size
+
+    if total == 0:
+        raise RuntimeError(
+            "Training DataLoader contains no samples."
+        )
+
+    average_loss = (
+        total_loss / total
+    )
+
+    accuracy = (
+        correct / total
+    )
+
+    return (
+        average_loss,
+        accuracy,
+    )
+
+
+# ============================================================
+# Evaluation
+# ============================================================
+
+def evaluate(
+    model: nn.Module,
+    loader: DataLoader,
+    criterion: nn.Module,
+    device: torch.device,
+):
+
+    model.eval()
+
+    total_loss = 0.0
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+
+        for features, labels in loader:
+
+            features = features.to(device)
+            labels = labels.to(device)
+
+            logits = model(features)
+
+            loss = criterion(
+                logits,
+                labels,
+            )
+
+            batch_size = labels.size(0)
+
+            total_loss += (
+                loss.item()
+                * batch_size
+            )
+
+            predictions = logits.argmax(
+                dim=1
+            )
+
+            correct += (
+                predictions == labels
+            ).sum().item()
+
+            total += batch_size
+
+    if total == 0:
+        raise RuntimeError(
+            "Evaluation DataLoader contains no samples."
+        )
+
+    average_loss = (
+        total_loss / total
+    )
+
+    accuracy = (
+        correct / total
+    )
+
+    return (
+        average_loss,
+        accuracy,
+    )
+
+
+# ============================================================
+# Main training pipeline
+# ============================================================
+
+def train() -> None:
+
+    set_seed(
+        RANDOM_SEED
+    )
+
+    # --------------------------------------------------------
+    # Device
+    # --------------------------------------------------------
+
+    device = get_device()
+
+    print("=" * 60)
+    print(
+        f"Training device: {device}"
+    )
+
+    if device.type == "cuda":
+        print(
+            "NVIDIA CUDA acceleration enabled."
+        )
+
+    elif device.type == "mps":
+        print(
+            "Apple Silicon MPS acceleration enabled."
+        )
+
+    else:
+        print(
+            "Training on CPU."
+        )
+
+    print("=" * 60)
+
+    # --------------------------------------------------------
+    # Dataset
+    # --------------------------------------------------------
+
+    print(
+        f"Processed dataset: "
+        f"{PROCESSED_DATASET_DIR}"
+    )
+
+    dataset = KeywordDataset(
+        root_dir=PROCESSED_DATASET_DIR
+    )
+
+    dataset_size = len(dataset)
+
+    if dataset_size == 0:
+        raise RuntimeError(
+            "Processed dataset contains no samples. "
+            "Run preprocessing first."
+        )
+
+    print(
+        f"Total dataset samples: "
+        f"{dataset_size}"
+    )
+
+    (
+        train_set,
+        validation_set,
+        test_set,
+    ) = split_dataset(
+        dataset
+    )
+
+    print()
+    print("Dataset split:")
+
+    print(
+        f"  Train      : "
+        f"{len(train_set)}"
+    )
+
+    print(
+        f"  Validation : "
+        f"{len(validation_set)}"
+    )
+
+    print(
+        f"  Test       : "
+        f"{len(test_set)}"
+    )
+
+    # --------------------------------------------------------
+    # DataLoaders
+    # --------------------------------------------------------
+
+    (
+        train_loader,
+        validation_loader,
+        test_loader,
+    ) = create_data_loaders(
+        train_set,
+        validation_set,
+        test_set,
+    )
+
+    # --------------------------------------------------------
+    # Model
+    # --------------------------------------------------------
+
+    model = KeywordCNN(
+        num_classes=NUM_CLASSES
+    ).to(device)
+
+    print()
+    print(
+        f"Number of classes: "
+        f"{NUM_CLASSES}"
+    )
+
+    print(
+        f"Classes: "
+        f"{CLASS_NAMES}"
+    )
+
+    # --------------------------------------------------------
+    # Loss
+    # --------------------------------------------------------
+
+    criterion = nn.CrossEntropyLoss()
+
+    # --------------------------------------------------------
+    # Optimizer
+    # --------------------------------------------------------
+
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=LEARNING_RATE,
         weight_decay=WEIGHT_DECAY,
     )
-    criterion = nn.CrossEntropyLoss()
-    train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-    validation_loader = DataLoader(
-        validation_set,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-        num_workers=0,
-    )
-    best_accuracy = -1.0
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-    for epoch in range(args.epochs):
-        model.train()
-        for features, labels in train_loader:
-            optimizer.zero_grad()
-            loss = criterion(model(features.to(device)), labels.to(device))
-            loss.backward()
-            optimizer.step()
-        model.eval()
-        correct = total = 0
-        with torch.no_grad():
-            for features, labels in validation_loader:
-                predictions = model(features.to(device)).argmax(dim=1).cpu()
-                correct += int((predictions == labels).sum())
-                total += labels.numel()
-        accuracy = correct / total if total else 0.0
-        print(f"epoch={epoch + 1}/{args.epochs} validation_accuracy={accuracy:.4f}")
-        if accuracy > best_accuracy:
-            best_accuracy = accuracy
+    # --------------------------------------------------------
+    # Model directory
+    # --------------------------------------------------------
+
+    MODEL_PATH.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    # --------------------------------------------------------
+    # Training loop
+    # --------------------------------------------------------
+
+    best_validation_accuracy = -1.0
+
+    print()
+    print("=" * 60)
+    print("Starting training")
+    print("=" * 60)
+    print()
+
+    for epoch in range(
+        1,
+        EPOCHS + 1,
+    ):
+
+        # ----------------------------------------------------
+        # Train
+        # ----------------------------------------------------
+
+        (
+            train_loss,
+            train_accuracy,
+        ) = train_one_epoch(
+            model=model,
+            loader=train_loader,
+            optimizer=optimizer,
+            criterion=criterion,
+            device=device,
+        )
+
+        # ----------------------------------------------------
+        # Validation
+        # ----------------------------------------------------
+
+        (
+            validation_loss,
+            validation_accuracy,
+        ) = evaluate(
+            model=model,
+            loader=validation_loader,
+            criterion=criterion,
+            device=device,
+        )
+
+        # ----------------------------------------------------
+        # Metrics
+        # ----------------------------------------------------
+
+        print(
+            f"Epoch "
+            f"{epoch:02d}/{EPOCHS}"
+        )
+
+        print(
+            f"  Train      "
+            f"loss={train_loss:.4f} "
+            f"accuracy={train_accuracy:.4f}"
+        )
+
+        print(
+            f"  Validation "
+            f"loss={validation_loss:.4f} "
+            f"accuracy={validation_accuracy:.4f}"
+        )
+
+        # ----------------------------------------------------
+        # Save best checkpoint
+        # ----------------------------------------------------
+
+        if (
+            validation_accuracy
+            > best_validation_accuracy
+        ):
+
+            best_validation_accuracy = (
+                validation_accuracy
+            )
+
+            checkpoint = {
+                "model_state_dict":
+                    model.state_dict(),
+
+                "class_names":
+                    CLASS_NAMES,
+
+                "validation_accuracy":
+                    validation_accuracy,
+
+                "model_version":
+                    "keyword-cnn-v1",
+            }
+
             torch.save(
-                {
-                    "model_state_dict": model.state_dict(),
-                    "class_names": CLASS_NAMES,
-                    "model_version": MODEL_VERSION,
-                    "validation_accuracy": accuracy,
-                },
+                checkpoint,
                 MODEL_PATH,
             )
-    print(f"Best validation accuracy: {best_accuracy:.4f}")
-    print(f"Saved model: {MODEL_PATH}")
 
+            print(
+                "  -> Saved new best model"
+            )
+
+        print()
+
+    # ========================================================
+    # Load best checkpoint
+    # ========================================================
+
+    print("=" * 60)
+    print("Training complete")
+    print("=" * 60)
+
+    checkpoint = torch.load(
+        MODEL_PATH,
+        map_location=device,
+    )
+
+    model.load_state_dict(
+        checkpoint[
+            "model_state_dict"
+        ]
+    )
+
+    # ========================================================
+    # Final test
+    # ========================================================
+
+    (
+        test_loss,
+        test_accuracy,
+    ) = evaluate(
+        model=model,
+        loader=test_loader,
+        criterion=criterion,
+        device=device,
+    )
+
+    print()
+    print("=" * 60)
+    print("Final results")
+    print("=" * 60)
+
+    print(
+        f"Best validation accuracy : "
+        f"{best_validation_accuracy:.4f}"
+    )
+
+    print(
+        f"Final test loss          : "
+        f"{test_loss:.4f}"
+    )
+
+    print(
+        f"Final test accuracy      : "
+        f"{test_accuracy:.4f}"
+    )
+
+    print(
+        f"Saved model              : "
+        f"{MODEL_PATH}"
+    )
+
+    print("=" * 60)
+
+
+# ============================================================
+# Entry point
+# ============================================================
 
 if __name__ == "__main__":
-    main()
+    train()
