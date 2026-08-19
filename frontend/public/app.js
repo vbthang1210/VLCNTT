@@ -283,6 +283,7 @@ document.querySelector('#play').addEventListener('click', () => {
 
 document.querySelector('#stop').addEventListener('click', () => sendCommand('stop'));
 document.querySelector('#pause').addEventListener('click', () => sendCommand('pause'));
+document.querySelector('#resume').addEventListener('click', () => sendCommand('resume'));
 recordStart.addEventListener('click', startRecording);
 recordStop.addEventListener('click', stopRecording);
 

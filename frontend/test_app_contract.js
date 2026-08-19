@@ -10,3 +10,5 @@ assert.match(app, /method: ['"]DELETE['"]/);
 assert.match(app, /recordCountdown/);
 assert.match(app, /updateRecordingCountdown/);
 assert.match(html, /id="recordCountdown"/);
+assert.match(app, /sendCommand\('resume'/);
+assert.match(html, /id="resume"/);

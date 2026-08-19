@@ -16,6 +16,7 @@ class AudioPlayer {
   void update();
   void stop();
   bool pause();
+  bool resume();
   bool setVolume(uint8_t volume);
   bool isActive() const;
   bool isPaused() const;

@@ -1,14 +1,24 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 
 try:
     import paho.mqtt.client as mqtt
 except ImportError:  # pragma: no cover - exercised only when dependency is absent
     mqtt = None
+
+logger = logging.getLogger(__name__)
+_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]{1,63}$")
+
+
+def is_safe_identifier(value: object) -> bool:
+    return isinstance(value, str) and _SAFE_IDENTIFIER.fullmatch(value) is not None
 
 
 ALLOWED_STATUSES = {
@@ -54,11 +64,23 @@ class DeviceStateStore:
         request_id = payload.get("request_id")
         with self._lock:
             current_request = self._request_order.get(device_id)
-            if request_id and current_request and request_id != current_request:
-                return self._states.get(device_id)
             state = self._states.setdefault(device_id, DeviceState(device_id))
+            closes_current_recording = (
+                status == "STOPPED"
+                and request_id
+                and current_request
+                and request_id != current_request
+                and payload.get("recording_id")
+                and payload["recording_id"] == state.recording_id
+            )
+            if request_id and current_request and request_id != current_request:
+                if not closes_current_recording:
+                    return state
+            effective_request_id = (
+                state.request_id if closes_current_recording else request_id or state.request_id
+            )
             state.status = status
-            state.request_id = request_id or state.request_id
+            state.request_id = effective_request_id
             state.audio_id = payload.get("audio_id", state.audio_id)
             state.recording_id = payload.get("recording_id", state.recording_id)
             state.error = payload.get("error")
@@ -107,16 +129,60 @@ class MqttService:
         notification_service=None,
         cloud_service=None,
         recording_service=None,
+        voice_command_service=None,
     ):
         self.settings = settings
         self.state_store = state_store
         self.notification_service = notification_service
         self.cloud_service = cloud_service
         self.recording_service = recording_service
+        self.voice_command_service = voice_command_service
+        self._voice_executor_lock = Lock()
+        self._voice_stopped = False
+        self._voice_executor = None
+        self._ensure_voice_executor()
         self.client = None
         self._connected = False
 
+    def set_voice_command_service(self, service) -> None:
+        with self._voice_executor_lock:
+            self.voice_command_service = service
+            self._ensure_voice_executor_locked()
+
+    def _ensure_voice_executor(self) -> None:
+        with self._voice_executor_lock:
+            self._ensure_voice_executor_locked()
+
+    def _ensure_voice_executor_locked(self) -> None:
+        if (
+            not self._voice_stopped
+            and self.voice_command_service is not None
+            and self._voice_executor is None
+        ):
+            self._voice_executor = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="voice-command",
+            )
+
+    def _submit_voice_record(self, record: dict) -> bool:
+        with self._voice_executor_lock:
+            executor = self._voice_executor
+            if (
+                self._voice_stopped
+                or executor is None
+                or self.voice_command_service is None
+            ):
+                return False
+            try:
+                executor.submit(self._process_voice_record, record)
+            except RuntimeError:
+                return False
+            return True
+
     def start(self) -> None:
+        with self._voice_executor_lock:
+            self._voice_stopped = False
+            self._ensure_voice_executor_locked()
         if not self.settings.mqtt_enabled or mqtt is None:
             return
         try:
@@ -124,7 +190,10 @@ class MqttService:
         except AttributeError:
             self.client = mqtt.Client(client_id="backend")
         if self.settings.mqtt_username:
-            self.client.username_pw_set(self.settings.mqtt_username, self.settings.mqtt_password or "")
+            self.client.username_pw_set(
+                self.settings.mqtt_username,
+                self.settings.mqtt_password or "",
+            )
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
@@ -209,8 +278,23 @@ class MqttService:
                 "recording_id": record["audio_id"],
                 "audio_id": record["audio_id"],
             })
+            if record.get("source") == "INMP441":
+                self._submit_voice_record(record)
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError, RuntimeError):
             return
+
+    def _process_voice_record(self, record: dict) -> None:
+        try:
+            result = self.voice_command_service.process(record)
+            logger.info(
+                "Voice command result | device=%s | audio=%s | reason=%s | published=%s",
+                record.get("device_id"),
+                record.get("audio_id"),
+                result.reason,
+                result.published,
+            )
+        except Exception:
+            logger.exception("Voice command processing failed for %s", record.get("audio_id"))
 
     def _persist_audio_metadata(self, record: dict) -> None:
         if self.cloud_service is None:
@@ -247,11 +331,27 @@ class MqttService:
             return False
         if self.client is None or not self._connected:
             return False
+        request_id = payload.get("request_id") if isinstance(payload, dict) else None
+        if not is_safe_identifier(device_id) or not is_safe_identifier(request_id):
+            return False
         topic = f"esp32/{device_id}/command"
-        result = self.client.publish(topic, json.dumps(payload), qos=1, retain=False)
-        return result.rc == mqtt.MQTT_ERR_SUCCESS
+        try:
+            result = self.client.publish(topic, json.dumps(payload), qos=1, retain=False)
+        except Exception:
+            logger.exception("MQTT command publish failed | device=%s", device_id)
+            return False
+        if getattr(result, "rc", None) != mqtt.MQTT_ERR_SUCCESS:
+            return False
+        self.state_store.set_current_request(device_id, request_id)
+        return True
 
     def stop(self) -> None:
+        with self._voice_executor_lock:
+            self._voice_stopped = True
+            executor = self._voice_executor
+            self._voice_executor = None
+            if executor is not None:
+                executor.shutdown(wait=True, cancel_futures=True)
         if self.client:
             self.client.loop_stop()
             self.client.disconnect()

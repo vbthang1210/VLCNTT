@@ -464,6 +464,17 @@ FAILED
 }
 ```
 
+## RESUME
+
+```json
+{
+  "request_id": "req_a83f_resume",
+  "command": "RESUME"
+}
+```
+
+RESUME chỉ hợp lệ khi ESP32 đang PAUSED và tiếp tục decoder hiện tại; PLAY vẫn là lệnh phát audio mới từ đầu.
+
 ## SET_VOLUME
 
 ```json
@@ -473,6 +484,18 @@ FAILED
   "volume": 70
 }
 ```
+
+## LIGHT
+
+```json
+{
+  "request_id": "req_light_01",
+  "command": "LIGHT",
+  "state": "ON"
+}
+```
+
+`state` chỉ nhận `ON` hoặc `OFF`; ESP32 phản hồi bằng event `LIGHT_CHANGED` với `light_state` tương ứng.
 
 ---
 
@@ -694,6 +717,7 @@ GET  /api/v1/audio/{audio_id}/download
 GET  /api/v1/devices/{device_id}/status
 POST /api/v1/devices/{device_id}/play
 POST /api/v1/devices/{device_id}/pause
+POST /api/v1/devices/{device_id}/resume
 POST /api/v1/devices/{device_id}/stop
 POST /api/v1/devices/{device_id}/volume
 POST /api/v1/devices/{device_id}/record/start

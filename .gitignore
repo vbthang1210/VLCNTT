@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+backend/.venv/
+
+# Generated embedded builds
+arduino-build-temp/
+arduino-cache-temp/
+
+# Runtime/generated audio and model data
+backend/storage/.recordings/
+backend/storage/models/
+backend/storage/audio/*
+!backend/storage/audio/.gitkeep
+dataset/processed/
+
+# Local hardware configuration override
+main/config.local.h

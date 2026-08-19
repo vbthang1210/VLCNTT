@@ -72,6 +72,12 @@ def pause(device_id):
     return publish(device_id, {"request_id": request_id_from_body(body), "command": "PAUSE"})
 
 
+@device_blueprint.post("/<device_id>/resume")
+def resume(device_id):
+    body = request.get_json(silent=True) or {}
+    return publish(device_id, {"request_id": request_id_from_body(body), "command": "RESUME"})
+
+
 @device_blueprint.post("/<device_id>/volume")
 def volume(device_id):
     body = request.get_json(silent=True) or {}

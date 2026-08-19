@@ -41,6 +41,12 @@ def test_health(client):
     assert response.json["success"] is True
 
 
+def test_health_reports_optional_ai_status(client):
+    data = client.get("/health").json["data"]
+    assert "ai_ready" in data
+    assert "ai_error_code" in data
+
+
 def test_upload_list_and_stream_audio(client):
     response = client.post(
         "/api/v1/audio/upload",

@@ -18,6 +18,7 @@ Status: DEVELOPMENT DEFAULT — production approval still required.
 - ESP32 audio library: ESP8266Audio 2.4.1. HTTP audio is streamed; no whole-file audio allocation is used.
 - ESP32 I2S development pins: BCLK=26, WS/LRC=25, DOUT=22. These are hardware assumptions and must be changed for a different DAC/board.
 - TTS endpoint returns an explicit not-configured error until a real provider is selected; no synthetic audio is presented as TTS.
+- Optional keyword AI is isolated from the core runtime; it consumes completed approximately-one-second INMP441 records and publishes the existing `LIGHT` command contract.
 
 ## CONFLICT-001 — FLOW.md versus PROJECT_RULES.md
 

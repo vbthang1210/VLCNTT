@@ -9,6 +9,7 @@
 #define MQTT_USERNAME "esp32_01"
 #define MQTT_PASSWORD "123"
 #define DEVICE_ID "esp32_01"
+#define LED_PIN 2
 
 // Default external I2S DAC wiring; change for the actual board/DAC.
 #define I2S_BCLK_PIN 26

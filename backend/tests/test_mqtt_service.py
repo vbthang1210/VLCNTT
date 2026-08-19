@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import sys
 from types import SimpleNamespace
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.mqtt_service import DeviceStateStore, MqttService
 
@@ -80,6 +84,32 @@ def test_stale_status_does_not_replace_current_request():
     assert state.request_id == "req_2"
 
 
+def test_stale_stop_for_current_recording_closes_recording_request():
+    service, store = service_for_test()
+    store.set_current_request("esp32_01", "req_stop")
+    state = store.get("esp32_01")
+    state.status = "RECORDING"
+    state.recording_id = "rec_001"
+
+    service._on_message(
+        None,
+        None,
+        message(
+            "esp32/esp32_01/status",
+            {
+                "device_id": "esp32_01",
+                "request_id": "req_start",
+                "recording_id": "rec_001",
+                "status": "STOPPED",
+            },
+        ),
+    )
+
+    state = store.get("esp32_01")
+    assert state.status == "STOPPED"
+    assert state.request_id == "req_stop"
+
+
 def test_event_topic_is_stored_without_changing_device_status():
     service, store = service_for_test()
     service._on_message(
@@ -97,3 +127,56 @@ def test_event_topic_is_stored_without_changing_device_status():
     state = store.get("esp32_01")
     assert state.status == "OFFLINE"
     assert state.last_event["event"] == "PLAY_COMPLETED"
+
+
+def test_publish_command_marks_request_current_after_success():
+    service, store = service_for_test()
+
+    class FakeClient:
+        def publish(self, topic, payload, qos, retain):
+            return SimpleNamespace(rc=0)
+
+    service.client = FakeClient()
+    service._connected = True
+
+    assert service.publish_command(
+        "esp32_01",
+        {"request_id": "ai_voice_001", "command": "LIGHT", "state": "ON"},
+    ) is True
+    assert store.get("esp32_01").request_id == "ai_voice_001"
+
+
+def test_publish_command_returns_false_when_client_raises():
+    service, _store = service_for_test()
+
+    class ExplodingClient:
+        def publish(self, topic, payload, qos, retain):
+            raise RuntimeError("publish failed")
+
+    service.client = ExplodingClient()
+    service._connected = True
+
+    assert service.publish_command(
+        "esp32_01",
+        {"request_id": "req_001", "command": "STOP"},
+    ) is False
+
+
+def test_publish_command_rejects_unsafe_topic_or_request_identifier():
+    service, _store = service_for_test()
+
+    class FakeClient:
+        def publish(self, topic, payload, qos, retain):
+            raise AssertionError("unsafe command reached MQTT client")
+
+    service.client = FakeClient()
+    service._connected = True
+
+    assert service.publish_command(
+        "esp32/unsafe",
+        {"request_id": "req_001", "command": "STOP"},
+    ) is False
+    assert service.publish_command(
+        "esp32_01",
+        {"request_id": "req/unsafe", "command": "STOP"},
+    ) is False

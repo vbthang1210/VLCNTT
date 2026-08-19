@@ -4,6 +4,7 @@ import io
 import json
 import struct
 import sys
+import threading
 import time
 import wave
 from pathlib import Path
@@ -129,6 +130,29 @@ def test_record_routes_publish_start_and_stop_commands(app):
     }
 
 
+def test_resume_route_publishes_resume_command(app):
+    calls = []
+
+    class FakeMqttService:
+        def publish_command(self, device_id, payload):
+            calls.append((device_id, payload))
+            return True
+
+    app.extensions["mqtt_service"] = FakeMqttService()
+    response = app.test_client().post(
+        "/api/v1/devices/esp32_01/resume",
+        json={"request_id": "req_resume"},
+    )
+
+    assert response.status_code == 202
+    assert calls == [
+        (
+            "esp32_01",
+            {"request_id": "req_resume", "command": "RESUME"},
+        )
+    ]
+
+
 def test_audio_download_returns_attachment(app):
     client = app.test_client()
     response = client.post(
@@ -179,3 +203,91 @@ def test_incomplete_recording_is_removed_after_timeout(app):
     with pytest.raises(RecordingError, match="not active"):
         service.append_chunk("esp32_01", "rec_timeout", 0, b"\x00\x00")
     assert not temp_path.exists()
+
+
+def test_inmp441_completion_dispatches_voice_processing(app):
+    completed = threading.Event()
+    records = []
+
+    class FakeVoiceCommandService:
+        def process(self, record):
+            records.append(record)
+            completed.set()
+
+    mqtt_service = app.extensions["mqtt_service"]
+    mqtt_service.set_voice_command_service(FakeVoiceCommandService())
+    pcm = b"\x00\x00" * 16000
+    try:
+        mqtt_service._on_message(
+            None,
+            None,
+            mqtt_message(
+                "esp32/esp32_01/audio/start",
+                {
+                    "device_id": "esp32_01",
+                    "recording_id": "rec_voice",
+                    "sample_rate": 16000,
+                    "channels": 1,
+                    "bits_per_sample": 16,
+                    "duration_seconds": 1,
+                },
+            ),
+        )
+        mqtt_service._on_message(
+            None,
+            None,
+            mqtt_message("esp32/esp32_01/audio/chunk/rec_voice/0", pcm),
+        )
+        mqtt_service._on_message(
+            None,
+            None,
+            mqtt_message(
+                "esp32/esp32_01/audio/end",
+                {
+                    "device_id": "esp32_01",
+                    "recording_id": "rec_voice",
+                    "total_chunks": 1,
+                    "sample_count": 16000,
+                },
+            ),
+        )
+
+        assert completed.wait(1)
+        assert records[0]["audio_id"] == "rec_voice"
+        assert records[0]["source"] == "INMP441"
+    finally:
+        mqtt_service.stop()
+
+
+def test_voice_worker_handles_prediction_result_without_logger_error(app):
+    class FakeVoiceCommandService:
+        def process(self, record):
+            return SimpleNamespace(reason="AI_UNAVAILABLE", published=False)
+
+    mqtt_service = app.extensions["mqtt_service"]
+    mqtt_service.set_voice_command_service(FakeVoiceCommandService())
+    try:
+        mqtt_service._process_voice_record(
+            {"device_id": "esp32_01", "audio_id": "rec_voice"}
+        )
+    finally:
+        mqtt_service.stop()
+
+
+def test_voice_submission_after_stop_is_safe(app):
+    mqtt_service = app.extensions["mqtt_service"]
+    mqtt_service.stop()
+
+    assert mqtt_service._submit_voice_record({"audio_id": "rec_voice"}) is False
+
+
+def test_voice_executor_is_recreated_when_service_starts_again(app):
+    mqtt_service = app.extensions["mqtt_service"]
+    mqtt_service.stop()
+
+    mqtt_service.start()
+
+    try:
+        assert mqtt_service._voice_executor is not None
+    finally:
+        mqtt_service.stop()

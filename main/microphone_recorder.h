@@ -13,7 +13,7 @@ class MicrophoneRecorder {
   void begin(MqttManager* mqtt);
   bool start(const char* requestId, const char* recordingId, uint32_t durationSeconds);
   void update();
-  bool stop();
+  bool stop(const char* requestId = nullptr);
   bool isRecording() const;
   const char* requestId() const;
   const char* recordingId() const;

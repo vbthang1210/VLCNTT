@@ -80,7 +80,7 @@ Status: `IMPLEMENTED` / compile `PASS` / hardware `NOT VERIFIED`.
 Status: `IMPLEMENTED` / compile `PASS` / device runtime `NOT VERIFIED`.
 
 - Validates JSON, `request_id`, command, PLAY fields and volume range.
-- Supports `PLAY`, `PAUSE`, `STOP`, `SET_VOLUME`.
+- Supports `PLAY`, `PAUSE`, `RESUME`, `STOP`, `SET_VOLUME`.
 - Unknown/invalid commands publish error payloads.
 
 ### ESP-04.1 — HTTP streaming audio source
@@ -104,6 +104,7 @@ Status: `IMPLEMENTED` / compile `PASS` / hardware `NOT VERIFIED`.
 - New PLAY stops/releases previous session.
 - STOP releases generator, buffer, HTTP source and I2S.
 - PAUSE reports PAUSED.
+- RESUME continues the paused decoder; PLAY remains a new playback from the beginning.
 - Completion emits STOPPED status and `PLAY_COMPLETED` event.
 - Stream failure emits ERROR status and `AUDIO_DOWNLOAD_FAILED`.
 
@@ -323,3 +324,27 @@ Status: `IMPLEMENTED` / host regression tests `PASS` / hardware runtime `NOT VER
 - Volume changes publish an event without forcing the device to `IDLE`.
 - Oversized command errors use the configured runtime device ID.
 - Incomplete recording sessions expire after `RECORDING_SESSION_TIMEOUT_SECONDS` (default 15 seconds).
+- `STOP_RECORDING` rebinds the recorder completion response to the stop request; Backend also accepts a stale terminal `STOPPED` for the same recording ID.
+
+## EPIC LED-AI — LED control and optional keyword inference
+
+### LED-01 — ESP32 LIGHT command
+Status: `IMPLEMENTED` / firmware compile and contract test `PASS` / physical LED runtime `NOT VERIFIED`.
+
+- `LIGHT` accepts only `ON`/`OFF`.
+- ESP32 drives configurable `LED_PIN` (development default GPIO2).
+- ESP32 emits `LIGHT_CHANGED` without changing the audio status contract.
+
+### AI-01 — Optional keyword runtime
+Status: `IMPLEMENTED` source/tests / model inference `NOT VERIFIED` until a checkpoint exists.
+
+- Missing Torch/model does not crash Backend; health reports `ai_ready=false`.
+- `bat` maps to `LIGHT ON`; `tat` maps to `LIGHT OFF` at confidence >= 0.80.
+- Only approximately-one-second recordings are eligible for keyword inference.
+
+### AI-02 — Optional training
+Status: `IMPLEMENTED` scripts / training quality `NOT VERIFIED` until a real dataset is supplied.
+
+- Optional dependencies are isolated in `backend/requirements-ai.txt`.
+- Preprocess expects `dataset/raw/{bat,tat,unknown,silence}`.
+- Training writes `backend/storage/models/keyword_cnn.pt`.

@@ -225,3 +225,136 @@
   - PASS — exact Arduino compile: 1,096,060 bytes (83%), 53,368 bytes global (16%).
   - PASS — `npm run check`: 38 passed, 2 auth integration tests skipped without credential env.
   - NOT VERIFIED — new firmware upload/runtime 20-second sample count and microphone hiss source.
+
+### 2026-08-19 02:53 - Port LED and optional keyword AI from origin/huy
+
+- Đã làm:
+  - Port `LedManager` vào `main/` with configurable `LED_PIN`, current MQTT `LIGHT ON/OFF` command, and `LIGHT_CHANGED` event; did not port Huy's `vlcntt` audio topics or overwrite current recording pipeline.
+  - Added optional lazy AI runtime: missing Torch/checkpoint keeps Backend healthy and reports `ai_ready=false`.
+  - Added `bat`/`tat` voice-command mapping to current `LIGHT` contract, with one-second recording-window guard and background executor so MQTT callbacks are not blocked.
+  - Added optional training/model sources under `backend/training/`, `backend/model/`, and `backend/requirements-ai.txt`; scripts write `backend/storage/models/keyword_cnn.pt` after a real dataset is supplied.
+  - Updated `PROJECT_RULES.md`, `TASK.md`, `README.md`, `ARCHITECTURE_LOG.md`, `docs/PROJECT_TASKS.md`, and `verify-run.py`.
+
+- Verification:
+  - PASS — AI/voice tests, LED firmware contract, Python compile for `app tests training model`.
+  - PASS — exact Arduino compile: 1,096,680 bytes (83%), 53,368 bytes global (16%).
+  - PASS — `npm run check`: 58 passed, 2 auth integration tests skipped without credential env.
+  - NOT VERIFIED — physical LED output, a trained Torch checkpoint, keyword accuracy, and AI-to-ESP32 runtime E2E.
+  - Security — `main/config.h` is tracked and already contains local hardware credentials in the baseline; this change adds no new secret, but credentials must be moved/rotated before publishing or committing a clean version.
+
+### 2026-08-19 03:11 - Harden LED/AI/training port
+
+- Đã sửa:
+  - Reject malformed, non-finite, boolean, and out-of-window voice recording durations before inference.
+  - Training defaults to `dataset/processed/` after preprocessing; `train.py --help` works without optional Torch installed.
+  - Added integration coverage for INMP441 completion dispatch to the voice worker and unreadable AI checkpoint handling.
+  - Removed unused training state and wrapped long lines for review readability.
+
+- Verification:
+  - PASS — `npm run check`: 63 passed, 2 auth integration tests skipped without credential env.
+  - PASS — exact Arduino compile remains 1,096,680 bytes (83%), 53,368 bytes global (16%).
+  - PASS — static scan found no dangerous execution, hardcoded secret assignment, or merge-conflict markers in new LED/AI/training files.
+  - NOT VERIFIED — independent review result pending; physical LED output, trained-model accuracy, and AI-to-ESP32 hardware E2E remain unverified.
+
+### 2026-08-19 03:16 - Remove duplicate runtime audio artifacts
+
+- Evidence: `audio_5ea110b6.wav`, `audio_8c3033e0.wav`, `audio_47449ab8.wav`, and `audio_6c0ac2c3.wav` had the same SHA-256 as `rec_ca0a8cfd.wav` and were chained duplicate metadata entries.
+- Đã xóa 4 duplicate WAV files, removed their metadata, and kept the original `rec_ca0a8cfd.wav`.
+- Added root `.gitignore` for Python/build/runtime/training artifacts; existing tracked files are not silently ignored or rewritten.
+- Verification: PASS — `npm run check`: 63 passed, 2 skipped; duplicate cleanup verified by file existence and metadata inspection.
+
+
+
+### 2026-08-19 03:23 - Fix voice worker logger regression
+
+- Root cause: `MqttService._process_voice_record()` called `logger.info/exception` without a module logger definition; the failure was hidden by the worker exception path.
+- Fix: add `logging` import and `logger = logging.getLogger(__name__)` in `backend/app/mqtt_service.py`.
+- Regression: `test_voice_worker_handles_prediction_result_without_logger_error` observed RED before the fix and GREEN after it.
+- Verification: PASS — targeted tests 2 passed; full `npm run check` 64 passed, 2 skipped.
+
+### 2026-08-19 03:41 - Resolve independent review findings
+
+- Đã sửa:
+  - `LIGHT_CHANGED` now serializes via ArduinoJson with JSON escaping and measured buffer bounds.
+  - Voice executor has locked submit/stop/start lifecycle; shutdown waits for running inference and rejects submissions after stop.
+  - Voice AI rejects missing duration, malformed/non-finite values, and windows outside 0.5–1.5 seconds.
+  - Added `MODEL_DIR` and project-root preprocessing defaults; training/preprocess CLI paths no longer depend on current working directory.
+  - Added regression tests for each finding, including the previously hidden voice-worker logger failure.
+
+- Verification:
+  - PASS — targeted RED/GREEN cycles for all listed findings.
+  - PASS — `npm run check`: 70 passed, 2 skipped.
+  - PASS — exact Arduino compile: 1,100,720 bytes (83%), 53,368 bytes global (16%).
+  - NOT VERIFIED — final independent reviewer verdict, physical LED, Torch training/inference, and AI-to-ESP32 hardware E2E.
+
+### 2026-08-19 03:48 - Harden all firmware JSON publishers
+
+- Đã sửa:
+  - Replaced remaining firmware `snprintf` JSON construction for state/error/event/recording payloads with one bounded ArduinoJson serializer.
+  - Dynamic request, audio, and recording IDs are JSON-escaped; oversized payloads fall back to a static `PAYLOAD_TOO_LARGE` error without recursive formatting.
+  - Added contract coverage requiring every publisher to use the bounded helper.
+
+- Verification:
+  - PASS — targeted firmware contract tests.
+  - PASS — `npm run check`: 71 passed, 2 skipped.
+  - PASS — Arduino compile: 1,102,168 bytes (84%), 53,368 bytes global (16%).
+  - Warning — existing ESP8266Audio PDM narrowing conversion warning; compile still succeeds.
+  - NOT VERIFIED — physical LED, Torch training/inference, and AI-to-ESP32 hardware E2E.
+
+### 2026-08-19 03:56 - Harden MQTT manager JSON payloads
+
+- Đã sửa `main/mqtt_manager.cpp` LWT/ONLINE, audio start/end, and oversized-command error payloads to use bounded ArduinoJson serialization; topic/QoS/binary PCM behavior is unchanged.
+- Added MQTT manager contract coverage for the bounded JSON helper.
+- Verification: PASS — `npm run check`: 72 passed, 2 skipped; Arduino compile `1,103,760 bytes (84%)`, RAM `53,368 bytes (16%)`.
+- Warning: existing ESP8266Audio PDM narrowing conversion remains; compile exits 0.
+- NOT VERIFIED — physical hardware/runtime and Torch model quality.
+
+### 2026-08-19 04:02 - Validate MQTT topic identifiers
+
+- Đã thêm validation identifier `[A-Za-z0-9_-]` và giới hạn độ dài trước khi build device/audio topics; kiểm tra `snprintf` không truncate.
+- Không đổi topic, QoS, retain, hoặc binary PCM recording contract.
+- Verification: PASS — targeted MQTT manager contract tests; `npm run check`: 73 passed, 2 skipped; Arduino compile `1,103,856 bytes (84%)`, RAM `53,368 bytes (16%)`.
+- Warning: existing ESP8266Audio PDM narrowing conversion remains.
+
+### 2026-08-19 04:08 - Final independent review gate
+
+- Independent reviewer read current firmware/backend/training source and tests, but its final JSON verdict did not return after the tool timeout boundary and the run was stopped.
+- Status: `NOT VERIFIED` for the independent-review approval gate; no new source changes were made after the final local checks.
+
+### 2026-08-19 10:18 - Resolve final backend seam findings
+
+- Đã sửa:
+  - `VoiceCommandService` catches `OverflowError` for extreme duration input.
+  - `MqttService.publish_command` validates device/request IDs, catches JSON/client exceptions, safely handles malformed publish results, and records the current request after success.
+  - Backend package imports now work both from `backend/` and repository root; added regression coverage.
+  - Firmware command ingress rejects unsafe/oversized request, recording, and audio IDs plus oversized audio URLs before side effects.
+
+- Verification:
+  - PASS — `npm run check`: 79 passed, 2 skipped.
+  - PASS — exact Arduino compile: 1,104,084 bytes (84%), RAM 53,368 bytes (16%).
+  - PASS — `git diff --check` and artifact cleanup.
+  - NOT VERIFIED — final independent reviewer JSON; the reviewer read current seam files but exceeded the timeout boundary before returning.
+
+### 2026-08-19 10:18 - Final seam hardening and review blocker
+
+- Đã sửa các seam cuối:
+  - `OverflowError` duration.
+  - MQTT publish exception/result handling and current-request state.
+  - Backend package-root imports.
+  - Firmware command ID/URL bounds before side effects.
+- Verification: PASS — `npm run check`: 79 passed, 2 skipped; Arduino compile `1,104,084 bytes (84%)`, RAM `53,368 bytes (16%)`; `git diff --check` and artifact cleanup PASS.
+- Independent reviewer result: `NOT VERIFIED` — agent read current seam files but ended with `Operation interrupted: waiting for model response`; no approval verdict was fabricated.
+
+### 2026-08-19 12:54 - Fix STOP_RECORDING state and add RESUME
+
+- Đã sửa:
+  - Backend accepts a terminal stale `STOPPED` status when `recording_id` matches the active recording, while preserving the newer stop request ID.
+  - Firmware rebinds recorder completion to the latest request ID for `STOP_RECORDING`, `STOP`, and PLAY interrupt paths.
+  - Added `AudioPlayer::resume()` and firmware `RESUME` command; RESUME continues the paused decoder, while PLAY remains a new playback from the beginning.
+  - Added Backend `/api/v1/devices/{device_id}/resume`, Dashboard RESUME button, contract/docs, and regression tests.
+
+- Verification:
+  - PASS — targeted STOP/RESUME tests: 4 passed.
+  - PASS — `npm run check`: 83 passed, 2 skipped.
+  - PASS — Arduino compile: 1,104,276 bytes (84%), RAM 53,368 bytes (16%).
+  - NOT VERIFIED — physical recording/LED/speaker runtime and authenticated MQTT E2E.

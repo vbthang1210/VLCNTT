@@ -55,6 +55,23 @@ For free TTS, set `TTS_PROVIDER=edge` and use an Edge voice name such as
 `vi-VN-HoaiMyNeural`. For ElevenLabs, `TTS_PROVIDER=elevenlabs` uses `TTS_VOICE` as the ElevenLabs Voice ID,
 `TTS_API_KEY` as the `xi-api-key`, and `TTS_API_URL=https://api.elevenlabs.io/v1/text-to-speech`.
 
+## Optional keyword AI and training
+
+The `bat`/`tat` keyword model is optional. Install its dependencies separately:
+
+```bash
+cd backend
+uv pip install -r requirements-ai.txt
+cd ..
+python backend/training/preprocess_dataset.py --augmentations 2 --seed 42
+python backend/training/train.py --epochs 30
+```
+
+Training uses `dataset/processed/` by default after preprocessing; pass `--dataset` to override it.
+
+Place raw one-second WAV samples in `dataset/raw/{bat,tat,unknown,silence}/`.
+The checkpoint is written to `backend/storage/models/keyword_cnn.pt`; without Torch or a checkpoint, Backend remains healthy with `ai_ready=false`.
+
 Run tests:
 
 ```bash

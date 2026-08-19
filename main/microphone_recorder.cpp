@@ -137,9 +137,12 @@ bool MicrophoneRecorder::flushPendingChunk() {
   return true;
 }
 
-bool MicrophoneRecorder::stop() {
+bool MicrophoneRecorder::stop(const char* requestId) {
   if (!active_) {
     return false;
+  }
+  if (requestId != nullptr && requestId[0] != '\0') {
+    snprintf(requestId_, sizeof(requestId_), "%s", requestId);
   }
   if (!flushPendingChunk()) {
     releaseDriver();

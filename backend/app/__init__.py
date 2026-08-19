@@ -8,12 +8,14 @@ from .storage import AudioRepository
 from .routes.audio_routes import audio_blueprint
 from .routes.device_routes import device_blueprint
 from .services import (
+    AIService,
     AudioService,
     AudioStreamService,
     CloudService,
     NotificationService,
     PcmRecordingService,
     TTSService,
+    VoiceCommandService,
 )
 
 
@@ -37,6 +39,7 @@ def create_app(overrides: dict | None = None) -> Flask:
         settings.recording_max_seconds,
         settings.recording_session_timeout_seconds,
     )
+    app.extensions["ai_service"] = AIService()
     app.extensions["cloud_service"] = CloudService(
         settings.cloud_provider,
         settings.cloud_project_id,
@@ -66,6 +69,14 @@ def create_app(overrides: dict | None = None) -> Flask:
         app.extensions["cloud_service"],
         app.extensions["recording_service"],
     )
+    app.extensions["voice_command_service"] = VoiceCommandService(
+        app.extensions["ai_service"],
+        repository,
+        app.extensions["mqtt_service"],
+    )
+    app.extensions["mqtt_service"].set_voice_command_service(
+        app.extensions["voice_command_service"]
+    )
 
     app.register_blueprint(audio_blueprint)
     app.register_blueprint(device_blueprint)
@@ -80,9 +91,17 @@ def create_app(overrides: dict | None = None) -> Flask:
     @app.get("/health")
     def health():
         mqtt = app.extensions["mqtt_service"]
+        ai = app.extensions["ai_service"].status()
         return {
             "success": True,
-            "data": {"service": "backend", "mqtt_connected": mqtt.is_connected()},
+            "data": {
+                "service": "backend",
+                "mqtt_connected": mqtt.is_connected(),
+                "ai_ready": ai["ready"],
+                "ai_device": ai["device"],
+                "ai_model_version": ai["model_version"],
+                "ai_error_code": ai["error_code"],
+            },
             "message": "OK",
         }
 

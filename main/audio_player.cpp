@@ -98,6 +98,15 @@ bool AudioPlayer::pause() {
   return true;
 }
 
+bool AudioPlayer::resume() {
+  if (!active_ || !paused_) {
+    return false;
+  }
+  paused_ = false;
+  result_ = UpdateResult::PLAYING;
+  return true;
+}
+
 bool AudioPlayer::setVolume(uint8_t volume) {
   if (volume > 100) {
     return false;

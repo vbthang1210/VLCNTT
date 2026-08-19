@@ -10,7 +10,7 @@ commands = [
     (["node", "frontend/test_app_contract.js"], ROOT),
     (["npm", "--prefix", "frontend", "run", "check"], ROOT),
     (["uv", "run", "--directory", "backend", "pytest", "-q"], ROOT),
-    (["uv", "run", "--directory", "backend", "python", "-m", "compileall", "-q", "app", "tests"], ROOT),
+    (["uv", "run", "--directory", "backend", "python", "-m", "compileall", "-q", "app", "tests", "training", "model"], ROOT),
 ]
 
 for command, cwd in commands:
