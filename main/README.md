@@ -13,7 +13,7 @@ Install via Arduino CLI or Arduino IDE:
 
 ## Configuration
 
-Edit `config.h` locally:
+Copy `config.local.h.example` to `config.local.h` and edit the ignored local override:
 
 - `WIFI_SSID` / `WIFI_PASSWORD`
 - `MQTT_HOST` — must be the backend computer LAN IP for a physical ESP32; `127.0.0.1` is host-only.
@@ -21,7 +21,7 @@ Edit `config.h` locally:
 - I2S pins for the actual external DAC.
 - `MIC_I2S_BCLK_PIN`, `MIC_I2S_WS_PIN`, and `MIC_I2S_SD_PIN` for the INMP441.
 
-No credentials are committed by this project.
+The tracked `config.h` contains submission-safe defaults. Never put real credentials in `config.h` or commit `config.local.h`.
 
 ## Build
 

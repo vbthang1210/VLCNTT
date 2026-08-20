@@ -9,10 +9,20 @@ backend/.venv/
 arduino-build-temp/
 arduino-cache-temp/
 
+# Hermes local planning/session state
+.hermes/environment.json
+.hermes/plans/
+
 # Runtime/generated audio and model data
 backend/storage/.recordings/
 backend/storage/audio/*
 !backend/storage/audio/.gitkeep
+backend/storage/e2e_test_audio/
+backend/storage/e2e_test_metadata.json
+backend/storage/models/*
+!backend/storage/models/.gitkeep
+backend/test_artifacts/*
+!backend/test_artifacts/.gitkeep
 
 
 # Local hardware configuration override

@@ -23,7 +23,7 @@ See `ARCHITECTURE_LOG.md`. The default local stack uses:
 - MQTT: `127.0.0.1:1883`, anonymous
 - Device ID: `esp32_01`
 
-The ESP32 cannot connect to a loopback broker. For hardware, set `MQTT_HOST` in `main/config.h` to the development computer's LAN IP and configure Mosquitto/firewall accordingly.
+The ESP32 cannot connect to a loopback broker. For hardware, copy `main/config.local.h.example` to `main/config.local.h`, fill the local WiFi/MQTT values, and configure Mosquitto/firewall accordingly. `config.local.h` is ignored and must not be committed.
 
 ## Backend
 
@@ -95,7 +95,7 @@ Open `main/main.ino` in Arduino IDE or compile directly:
 arduino-cli compile --fqbn esp32:esp32:esp32 main
 ```
 
-Install/select Arduino-ESP32 Core and the libraries listed in `main/README.md` or the Arduino sketchbook. Fill WiFi values and adjust MQTT/I2S settings before hardware use.
+Install/select Arduino-ESP32 Core and the libraries listed in `main/README.md` or the Arduino sketchbook. The tracked `main/config.h` contains safe defaults; use the ignored `main/config.local.h` override before hardware use.
 
 ## Verification status
 

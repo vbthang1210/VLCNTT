@@ -4,10 +4,13 @@ import json
 import random
 import secrets
 import socket
+import sys
 import time
 import wave
 from pathlib import Path
 from threading import Event
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import paho.mqtt.client as mqtt
 

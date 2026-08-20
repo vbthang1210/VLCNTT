@@ -163,6 +163,7 @@ Routes:
 - `GET /api/v1/devices/{device_id}/status`
 - `POST /api/v1/devices/{device_id}/play`
 - `POST /api/v1/devices/{device_id}/pause`
+- `POST /api/v1/devices/{device_id}/resume`
 - `POST /api/v1/devices/{device_id}/stop`
 - `POST /api/v1/devices/{device_id}/volume`
 

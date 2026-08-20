@@ -1,20 +1,34 @@
+from __future__ import annotations
+
+import argparse
 import random
+import sys
+from pathlib import Path
 
-import numpy as np
-import torch
-from torch import nn
-from torch.utils.data import DataLoader, random_split
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from model.keyword_cnn import KeywordCNN
+try:
+    from training.config import (
+        MODEL_PATH,
+        NUM_CLASSES,
+        CLASS_NAMES,
+        PROCESSED_DATASET_DIR,
+    )
+except ModuleNotFoundError:
+    from backend.training.config import (
+        MODEL_PATH,
+        NUM_CLASSES,
+        CLASS_NAMES,
+        PROCESSED_DATASET_DIR,
+    )
 
-from training.config import (
-    MODEL_PATH,
-    NUM_CLASSES,
-    CLASS_NAMES,
-    PROCESSED_DATASET_DIR,
-)
 
-from training.dataset import KeywordDataset
+torch = None
+nn = None
+DataLoader = None
+random_split = None
+KeywordCNN = None
+KeywordDataset = None
 
 
 # ============================================================
@@ -33,14 +47,68 @@ TRAIN_RATIO = 0.80
 VALIDATION_RATIO = 0.10
 TEST_RATIO = 0.10
 
+DEFAULT_DATASET_DIR = PROCESSED_DATASET_DIR
+
+
+def _require_training_dependencies() -> None:
+    global torch, nn, DataLoader, random_split, KeywordCNN, KeywordDataset
+    if torch is not None:
+        return
+    try:
+        import torch as torch_module
+        from torch import nn as nn_module
+        from torch.utils.data import DataLoader as data_loader
+        from torch.utils.data import random_split as split_function
+
+        try:
+            from model.keyword_cnn import KeywordCNN as keyword_cnn
+            from training.dataset import KeywordDataset as keyword_dataset
+        except ModuleNotFoundError:
+            from backend.model.keyword_cnn import KeywordCNN as keyword_cnn
+            from backend.training.dataset import KeywordDataset as keyword_dataset
+    except ImportError as exc:
+        raise RuntimeError(
+            "Install backend/requirements-ai.txt before running training"
+        ) from exc
+
+    torch = torch_module
+    nn = nn_module
+    DataLoader = data_loader
+    random_split = split_function
+    KeywordCNN = keyword_cnn
+    KeywordDataset = keyword_dataset
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Train the optional keyword CNN model")
+    parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_DATASET_DIR,
+        help="processed dataset directory (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=EPOCHS,
+        help="number of training epochs (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=RANDOM_SEED,
+        help="random seed (default: %(default)s)",
+    )
+    return parser.parse_args(argv)
+
 
 # ============================================================
 # Reproducibility
 # ============================================================
 
 def set_seed(seed: int) -> None:
+    _require_training_dependencies()
     random.seed(seed)
-    np.random.seed(seed)
     torch.manual_seed(seed)
 
     if torch.cuda.is_available():
@@ -59,6 +127,7 @@ def get_device() -> torch.device:
         CPU
     """
 
+    _require_training_dependencies()
     if torch.cuda.is_available():
         return torch.device("cuda")
 
@@ -75,7 +144,7 @@ def get_device() -> torch.device:
 # Dataset splitting
 # ============================================================
 
-def split_dataset(dataset: KeywordDataset):
+def split_dataset(dataset: KeywordDataset, seed: int = RANDOM_SEED):
     """
     Split:
         80% train
@@ -89,6 +158,7 @@ def split_dataset(dataset: KeywordDataset):
         be added before official model evaluation.
     """
 
+    _require_training_dependencies()
     dataset_size = len(dataset)
 
     if dataset_size < 3:
@@ -123,9 +193,7 @@ def split_dataset(dataset: KeywordDataset):
             "Dataset is too small after splitting."
         )
 
-    generator = torch.Generator().manual_seed(
-        RANDOM_SEED
-    )
+    generator = torch.Generator().manual_seed(seed)
 
     train_set, validation_set, test_set = random_split(
         dataset,
@@ -322,11 +390,10 @@ def evaluate(
 # Main training pipeline
 # ============================================================
 
-def train() -> None:
-
-    set_seed(
-        RANDOM_SEED
-    )
+def train(argv=None) -> None:
+    args = parse_args(argv)
+    _require_training_dependencies()
+    set_seed(args.seed)
 
     # --------------------------------------------------------
     # Device
@@ -362,11 +429,11 @@ def train() -> None:
 
     print(
         f"Processed dataset: "
-        f"{PROCESSED_DATASET_DIR}"
+        f"{args.dataset}"
     )
 
     dataset = KeywordDataset(
-        root_dir=PROCESSED_DATASET_DIR
+        root_dir=args.dataset
     )
 
     dataset_size = len(dataset)
@@ -386,9 +453,7 @@ def train() -> None:
         train_set,
         validation_set,
         test_set,
-    ) = split_dataset(
-        dataset
-    )
+    ) = split_dataset(dataset, seed=args.seed)
 
     print()
     print("Dataset split:")
@@ -480,7 +545,7 @@ def train() -> None:
 
     for epoch in range(
         1,
-        EPOCHS + 1,
+        args.epochs + 1,
     ):
 
         # ----------------------------------------------------
@@ -518,7 +583,7 @@ def train() -> None:
 
         print(
             f"Epoch "
-            f"{epoch:02d}/{EPOCHS}"
+            f"{epoch:02d}/{args.epochs}"
         )
 
         print(

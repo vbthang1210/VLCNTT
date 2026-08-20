@@ -357,4 +357,23 @@
   - PASS — targeted STOP/RESUME tests: 4 passed.
   - PASS — `npm run check`: 83 passed, 2 skipped.
   - PASS — Arduino compile: 1,104,276 bytes (84%), RAM 53,368 bytes (16%).
-  - NOT VERIFIED — physical recording/LED/speaker runtime and authenticated MQTT E2E.
+- NOT VERIFIED — physical recording/LED/speaker runtime and authenticated MQTT E2E.
+
+### 2026-08-19 23:24 - Prepare source submission package
+
+- Đã externalize firmware credentials:
+  - tracked `main/config.h` chỉ còn safe defaults;
+  - thêm `main/config.local.h.example`;
+  - `main/config.local.h` bị ignore và không đưa vào package.
+- Đã xóa khỏi working tree các runtime/generated artifact đã track: Python bytecode, WAV/E2E audio, metadata test, checkpoint `keyword_cnn.pt`, `.hermes` local state/plan và `test_artifacts`.
+- Đã sửa training CLI để không import Torch/Numpy khi chỉ import hoặc chạy `--help`; thêm `--dataset`, `--epochs`, `--seed`.
+- Đã tạo source package bên ngoài repo:
+  - `C:\Users\vongb\Downloads\esp32-audio-system-source-final.zip`
+  - 82 source/test/docs/config files plus manifest; package audit không có `.pyc`, audio, checkpoint hoặc credential override.
+- Verification:
+  - PASS — `npm run check`: 83 passed, 2 skipped.
+  - PASS — `node frontend/test_app_contract.js`.
+  - PASS — Arduino compile: 1,104,228 bytes (84%), RAM 53,368 bytes (16%).
+  - PASS — `git diff --check`.
+  - 2 skipped — authenticated MQTT tests cần credential broker do người dùng cấp.
+  - NOT VERIFIED — hardware, authenticated MQTT-over-LAN, live Cloud/FCM và trained Torch inference.

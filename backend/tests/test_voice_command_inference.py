@@ -1,5 +1,8 @@
 from pathlib import Path
 import random
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services.ai_service import AIService
 from app.services.voice_command_service import VoiceCommandService
