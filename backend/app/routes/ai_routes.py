@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from flask import Blueprint, current_app, jsonify, request
@@ -36,19 +35,11 @@ def error(code, message, status):
 @ai_blueprint.post("/predict-file")
 def predict_file():
     """
-    Upload một file WAV rồi đưa nó vào đúng VoiceCommandService
-    đang được sử dụng bởi luồng microphone ESP32.
+    Upload WAV -> AudioRepository -> VoiceCommandService -> AIService
+    -> LIGHT ON/OFF -> MQTT.
 
-    Flow:
-        WAV upload
-            -> AudioRepository
-            -> VoiceCommandService
-            -> AIService
-            -> LIGHT ON/OFF
-            -> MQTT
-            -> ESP32
+    Endpoint này dùng cùng business pipeline với audio nhận từ ESP32.
     """
-
     upload = request.files.get("file") or request.files.get("audio")
 
     if upload is None:
@@ -59,7 +50,6 @@ def predict_file():
         )
 
     filename = (upload.filename or "").strip()
-
     if not filename:
         return error(
             "AI_FILE_REQUIRED",
@@ -67,7 +57,6 @@ def predict_file():
             400,
         )
 
-    # Keyword model hiện tại dùng WAV.
     if not filename.lower().endswith(".wav"):
         return error(
             "AI_FORMAT_INVALID",
@@ -75,15 +64,11 @@ def predict_file():
             400,
         )
 
-    # Device mà lệnh LIGHT sẽ được gửi tới.
-    #
-    # Frontend có thể gửi device_id.
-    # Nếu không gửi thì dùng DEVICE_ID trong Settings.
     settings = current_app.config["SETTINGS"]
-
     device_id = (
         request.form.get("device_id")
         or settings.device_id
+        or ""
     ).strip()
 
     if not device_id:
@@ -98,25 +83,20 @@ def predict_file():
         "voice_command_service"
     ]
 
-    # ================================================================
-    # 1. Lưu WAV vào cùng AudioRepository mà luồng mic đang sử dụng
-    # ================================================================
-
+    # 1) Lưu file WAV và để AudioService đọc metadata kỹ thuật
+    #    như duration, sample_rate, channels, ...
     try:
         record = audio_service.save_upload(upload)
-
     except ValueError as exc:
         return error(
             "AUDIO_INVALID",
             str(exc),
             400,
         )
-
     except Exception:
         current_app.logger.exception(
             "Could not save AI test audio"
         )
-
         return error(
             "AUDIO_PROCESSING_FAILED",
             "Audio could not be processed",
@@ -124,18 +104,9 @@ def predict_file():
         )
 
     audio_id = record["audio_id"]
-
-    # VoiceCommandService cần:
-    #
-    # device_id
-    # audio_id
-    # session_id
-    # duration
-    #
-    # audio_id + duration đã có từ AudioRepository.
-    # Ta bổ sung device_id và session_id.
     session_id = f"upload_{audio_id}"
 
+    # 2) Bổ sung dữ liệu mà VoiceCommandService cần.
     record = audio_service.update_metadata(
         audio_id,
         {
@@ -152,45 +123,25 @@ def predict_file():
             500,
         )
 
-    # ================================================================
-    # 2. GỌI ĐÚNG PIPELINE CŨ
-    # ================================================================
-    #
-    # Không gọi AIService trực tiếp.
-    #
-    # VoiceCommandService sẽ tự:
-    #
-    # audio_id
-    #   -> repository.path_for(audio_id)
-    #   -> AIService.predict()
-    #   -> bat/tat
-    #   -> LIGHT ON/OFF
-    #   -> MQTT publish
-    #
-    # ================================================================
-
+    # 3) Chạy đúng shared pipeline.
     try:
         result = voice_command_service.process(record)
-
     except Exception:
         current_app.logger.exception(
             "Voice command processing failed for uploaded audio %s",
             audio_id,
         )
-
         return error(
             "VOICE_COMMAND_FAILED",
             "Voice command processing failed",
             500,
         )
 
-    # ================================================================
-    # 3. Lưu kết quả AI vào metadata
-    # ================================================================
-
+    # 4) Lưu kết quả AI vào metadata để Audio Library / Cloud có thể đọc lại.
     updated_record = audio_service.update_metadata(
         audio_id,
         {
+            "ai_ran": result.ai_ran,
             "ai_label": result.label,
             "ai_text": result.label,
             "ai_confidence": result.confidence,
@@ -202,14 +153,8 @@ def predict_file():
         },
     )
 
-    # ================================================================
-    # 4. Đồng bộ metadata lên Cloud nếu Cloud đang cấu hình
-    # ================================================================
-
-    cloud_service = current_app.extensions.get(
-        "cloud_service"
-    )
-
+    # 5) Đồng bộ metadata lên Cloud nếu Cloud đang được cấu hình.
+    cloud_service = current_app.extensions.get("cloud_service")
     if cloud_service is not None and updated_record is not None:
         try:
             cloud_service.save_metadata(updated_record)
@@ -220,21 +165,20 @@ def predict_file():
                 exc_info=True,
             )
 
-    # ================================================================
-    # 5. Trả kết quả về frontend
-    # ================================================================
-
+    # 6) Response phân biệt rõ:
+    #    ai_ran=False => chưa có prediction, label/confidence null là hợp lệ.
+    #    ai_ran=True  => AI đã chạy và label/confidence là prediction thật.
     return ok(
         {
             "audio_id": audio_id,
             "filename": filename,
             "device_id": device_id,
             "session_id": result.session_id,
-
+            "duration": record.get("duration"),
+            "ai_ran": result.ai_ran,
             "label": result.label,
             "confidence": result.confidence,
             "accepted": result.accepted,
-
             "command": result.command,
             "state": result.state,
             "published": result.published,
