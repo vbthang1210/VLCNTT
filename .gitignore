@@ -29,6 +29,3 @@ backend/test_artifacts/*
 main/config.local.h
 android/app/google-services.json
 
-# 
-dataset/raw/
-dataset/processed/
