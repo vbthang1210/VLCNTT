@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import urlencode
 from urllib import request
 from urllib.error import HTTPError
 
@@ -59,11 +60,15 @@ class CloudService:
             "status",
             "device_id",
             "source",
+            "text",
+            "ai_label",
+            "ai_text",
+            "ai_confidence",
         }
         fields = {key: {"stringValue": str(value)} for key, value in record.items() if key in allowed and value is not None}
-        for key in {"duration", "sample_rate", "channels", "bits_per_sample", "sample_count", "size"} & fields.keys():
+        for key in {"duration", "ai_confidence", "sample_rate", "channels", "bits_per_sample", "sample_count", "size"} & fields.keys():
             value = record[key]
-            fields[key] = {"doubleValue": value} if key == "duration" else {"integerValue": str(value)}
+            fields[key] = {"doubleValue": float(value)} if key in {"duration", "ai_confidence"} else {"integerValue": str(value)}
         payload = json.dumps({"fields": fields}).encode("utf-8")
         url = (
             f"https://firestore.googleapis.com/v1/projects/{self.project_id}"
@@ -80,6 +85,85 @@ class CloudService:
         )
         self._send(http_request, "metadata")
         return {**record, "cloud_synced": True}
+
+    @staticmethod
+    def _decode_firestore_value(value):
+        if not isinstance(value, dict):
+            return None
+        if "stringValue" in value:
+            return value["stringValue"]
+        if "integerValue" in value:
+            return int(value["integerValue"])
+        if "doubleValue" in value:
+            return float(value["doubleValue"])
+        if "booleanValue" in value:
+            return bool(value["booleanValue"])
+        if "timestampValue" in value:
+            return value["timestampValue"]
+        if "nullValue" in value:
+            return None
+        if "mapValue" in value:
+            fields = value["mapValue"].get("fields", {})
+            return {key: CloudService._decode_firestore_value(item) for key, item in fields.items()}
+        if "arrayValue" in value:
+            values = value["arrayValue"].get("values", [])
+            return [CloudService._decode_firestore_value(item) for item in values]
+        return None
+
+    def list_metadata(self) -> list[dict]:
+        if self.provider != "firestore" or not self.project_id or not self.access_token:
+            if self.provider:
+                raise CloudNotConfigured("Firestore requires project ID and access token")
+            return []
+
+        base_url = (
+            f"https://firestore.googleapis.com/v1/projects/{self.project_id}"
+            f"/databases/(default)/documents/{self.collection}"
+        )
+        records = []
+        page_token = None
+        for _ in range(20):
+            query = {"pageSize": "100"}
+            if page_token:
+                query["pageToken"] = page_token
+            http_request = request.Request(
+                f"{base_url}?{urlencode(query)}",
+                headers={
+                    "Authorization": f"Bearer {self.access_token}",
+                },
+                method="GET",
+            )
+            try:
+                with self.opener(http_request, timeout=10) as response:
+                    status = getattr(response, "status", 200)
+                    body = response.read(4 * 1024 * 1024)
+                    if status < 200 or status >= 300:
+                        detail = body.decode("utf-8", errors="replace").strip()
+                        raise RuntimeError(f"Firestore list metadata HTTP {status}: {detail}")
+                    data = json.loads(body.decode("utf-8"))
+            except HTTPError as exc:
+                detail = exc.read(512).decode("utf-8", errors="replace").strip()
+                raise RuntimeError(f"Firestore list metadata HTTP {exc.code}: {detail}") from exc
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise RuntimeError("Firestore list metadata response was invalid") from exc
+
+            for document in data.get("documents", []):
+                if not isinstance(document, dict):
+                    continue
+                fields = document.get("fields", {})
+                record = {
+                    key: self._decode_firestore_value(value)
+                    for key, value in fields.items()
+                }
+                document_id = str(document.get("name", "")).rsplit("/", 1)[-1]
+                record["audio_id"] = record.get("audio_id") or document_id
+                record["cloud_synced"] = True
+                records.append(record)
+
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+        return records
 
     def save_status(self, status: dict) -> dict:
         if self.provider != "firestore" or not self.project_id or not self.access_token:

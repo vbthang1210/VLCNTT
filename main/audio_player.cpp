@@ -90,16 +90,31 @@ void AudioPlayer::stop() {
 }
 
 bool AudioPlayer::pause() {
-  if (!active_) {
+  if (!active_ || paused_ || output_ == nullptr) {
     return false;
   }
+  output_->SetGain(0.0f);
+  output_->flush();
+  if (!output_->stop()) {
+    output_->SetGain(static_cast<float>(volume_) / 100.0f);
+    return false;
+  }
+  output_->SetGain(static_cast<float>(volume_) / 100.0f);
   paused_ = true;
   result_ = UpdateResult::PAUSED;
   return true;
 }
 
 bool AudioPlayer::resume() {
-  if (!active_ || !paused_) {
+  if (!active_ || !paused_ || output_ == nullptr) {
+    return false;
+  }
+  if (!output_->begin()) {
+    releaseResources();
+    active_ = false;
+    paused_ = false;
+    result_ = UpdateResult::FAILED;
+    failureReported_ = true;
     return false;
   }
   paused_ = false;

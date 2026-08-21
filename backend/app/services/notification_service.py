@@ -9,21 +9,20 @@ class NotificationNotConfigured(RuntimeError):
 
 
 class NotificationService:
-    """FCM HTTP v1 adapter for event notifications."""
+    """Telegram Bot API adapter for device events."""
 
-    def __init__(
-        self,
-        provider=None,
-        project_id: str | None = None,
-        access_token: str | None = None,
-        device_token: str | None = None,
-        opener=None,
-    ):
+    def __init__(self, provider=None, telegram_bot_token=None, telegram_chat_id=None, opener=None):
         self.provider = provider
-        self.project_id = project_id
-        self.access_token = access_token
-        self.device_token = device_token
+        self.telegram_bot_token = telegram_bot_token
+        self.telegram_chat_id = telegram_chat_id
         self.opener = opener or request.urlopen
+
+    def is_configured(self) -> bool:
+        return (
+            self.provider == "telegram"
+            and bool(self.telegram_bot_token)
+            and bool(self.telegram_chat_id)
+        )
 
     @staticmethod
     def _notification_content(event: dict) -> dict[str, str]:
@@ -40,42 +39,42 @@ class NotificationService:
         elif status == "OFFLINE":
             title = "ESP32 offline"
             body = f"{device_id} is offline"
+        elif status == "ONLINE":
+            title = "ESP32 online"
+            body = f"{device_id} is online"
         else:
             title = "ESP32 status"
             body = f"{device_id}: {status or 'update'}"
         return {"title": title, "body": body}
 
     def notify(self, event: dict) -> bool:
-        if self.provider != "fcm" or not self.project_id or not self.access_token or not self.device_token:
+        if not self.is_configured():
             if self.provider:
-                raise NotificationNotConfigured(
-                    "FCM requires project ID, access token and device token"
-                )
+                raise NotificationNotConfigured("Telegram requires bot token and chat ID")
             return False
-        data = {
-            str(key): str(value)
-            for key, value in event.items()
-            if value is not None and isinstance(value, (str, int, float, bool))
-        }
+
+        content = self._notification_content(event)
+        text = f"🔔 {content['title']}\n{content['body']}"[:4096]
         payload = json.dumps(
             {
-                "message": {
-                    "token": self.device_token,
-                    "notification": self._notification_content(event),
-                    "data": data,
-                }
+                "chat_id": self.telegram_chat_id,
+                "text": text,
+                "disable_web_page_preview": True,
             }
         ).encode("utf-8")
         http_request = request.Request(
-            f"https://fcm.googleapis.com/v1/projects/{self.project_id}/messages:send",
+            f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage",
             data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.access_token}",
-            },
+            headers={"Content-Type": "application/json"},
             method="POST",
         )
         with self.opener(http_request, timeout=10) as response:
             if getattr(response, "status", 200) < 200 or getattr(response, "status", 200) >= 300:
-                raise RuntimeError("Notification provider request failed")
+                raise RuntimeError("Telegram notification request failed")
+            try:
+                result = json.loads(response.read(64 * 1024).decode("utf-8"))
+            except (AttributeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise RuntimeError("Telegram notification response was invalid") from exc
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            raise RuntimeError("Telegram notification provider rejected the message")
         return True

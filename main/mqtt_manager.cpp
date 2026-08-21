@@ -208,7 +208,7 @@ bool MqttManager::publishAudioChunk(const char* recordingId, uint32_t sequence,
     return false;
   }
   return publishBytes(topic, reinterpret_cast<const uint8_t*>(samples),
-                      sampleCount * sizeof(int16_t), false, 0);
+                      sampleCount * sizeof(int16_t), false, 1);
 }
 
 bool MqttManager::publishAudioEnd(const char* recordingId, uint32_t totalChunks,

@@ -48,9 +48,8 @@ def create_app(overrides: dict | None = None) -> Flask:
     )
     app.extensions["notification_service"] = NotificationService(
         settings.notification_provider,
-        settings.notification_project_id,
-        settings.notification_access_token,
-        settings.notification_device_token,
+        telegram_bot_token=settings.telegram_bot_token,
+        telegram_chat_id=settings.telegram_chat_id,
     )
     app.extensions["tts_service"] = TTSService(
         settings.tts_provider,

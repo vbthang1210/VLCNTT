@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, jsonify, request, send_file
 
+from ..services.cloud_service import CloudNotConfigured
 from ..services.tts_service import TTSNotConfigured, TTSProviderError
 
 
@@ -16,9 +17,40 @@ def error(code, message, status):
     return jsonify({"success": False, "error": {"code": code, "message": message}}), status
 
 
+def merge_audio_records(local_records: list[dict], cloud_records: list[dict]) -> list[dict]:
+    local_by_id = {
+        record.get("audio_id"): record
+        for record in local_records
+        if record.get("audio_id")
+    }
+    merged = []
+    cloud_ids = set()
+    for cloud_record in cloud_records:
+        audio_id = cloud_record.get("audio_id")
+        if not audio_id:
+            continue
+        cloud_ids.add(audio_id)
+        local_record = local_by_id.get(audio_id)
+        if local_record is None:
+            merged.append({**cloud_record, "local_available": False})
+        else:
+            merged.append({**local_record, **cloud_record, "local_available": True})
+    merged.extend(record for record in local_records if record.get("audio_id") not in cloud_ids)
+    return merged
+
+
 @audio_blueprint.get("")
 def list_audio():
-    return ok(current_app.extensions["audio_service"].list_audio())
+    local_records = current_app.extensions["audio_service"].list_audio()
+    cloud_service = current_app.extensions["cloud_service"]
+    try:
+        cloud_records = cloud_service.list_metadata()
+    except (CloudNotConfigured, RuntimeError) as exc:
+        current_app.logger.warning("Cloud metadata list unavailable: %s", exc)
+        return ok(local_records, "Loaded local audio; Cloud metadata unavailable")
+    if not cloud_records:
+        return ok(local_records)
+    return ok(merge_audio_records(local_records, cloud_records))
 
 
 @audio_blueprint.get("/<audio_id>")

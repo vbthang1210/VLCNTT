@@ -241,9 +241,25 @@ class MqttService:
                 "code": payload.get("error_code", "DEVICE_ERROR"),
                 "message": payload.get("message", "Device reported an error"),
             }
+        previous_status = None
+        if isinstance(payload.get("device_id"), str):
+            previous_status = self.state_store.get(payload["device_id"]).status
         self.state_store.update(payload)
         self._persist_status(payload)
-        if payload.get("status") in {"ERROR", "OFFLINE"}:
+        retained_initial_offline = (
+            payload.get("status") == "OFFLINE"
+            and bool(getattr(message, "retain", False))
+            and previous_status == "OFFLINE"
+        )
+        became_online = payload.get("status") == "ONLINE" and previous_status != "ONLINE"
+        has_error_details = bool(
+            payload.get("error_code") or payload.get("message") or payload.get("error")
+        )
+        if (
+            (payload.get("status") == "ERROR" and has_error_details)
+            or became_online
+            or (payload.get("status") == "OFFLINE" and not retained_initial_offline)
+        ):
             self._notify(payload)
 
     def _handle_audio_message(self, parts: list[str], payload: bytes) -> None:
@@ -293,6 +309,47 @@ class MqttService:
                 result.reason,
                 result.published,
             )
+            ai_text = None
+            if result.label == "bat":
+                ai_text = "Bật đèn"
+            elif result.label == "tat":
+                ai_text = "Tắt đèn"
+            elif result.label == "silence":
+                ai_text = "Khoảng lặng"
+            elif result.label == "unknown":
+                ai_text = "Không nhận diện được"
+            elif result.label:
+                ai_text = str(result.label)
+
+            ai_updates = {
+                "ai_label": result.label,
+                "ai_confidence": result.confidence,
+                "ai_accepted": result.accepted,
+                "ai_command": result.command,
+                "ai_state": result.state,
+                "ai_reason": result.reason,
+                "ai_published": result.published,
+                "ai_text": ai_text,
+            }
+            audio_id = record.get("audio_id") or record.get("id")
+            if audio_id and self.recording_service and hasattr(self.recording_service, "repository"):
+                try:
+                    updated_record = self.recording_service.repository.update_metadata(audio_id, ai_updates)
+                    if updated_record:
+                        self._persist_audio_metadata(updated_record)
+                except Exception:
+                    pass
+            device_id = record.get("device_id")
+            if device_id:
+                try:
+                    self.state_store.record_event({
+                        "device_id": device_id,
+                        "event": "VOICE_COMMAND_RESULT",
+                        "audio_id": audio_id,
+                        **ai_updates,
+                    })
+                except Exception:
+                    pass
         except Exception:
             logger.exception("Voice command processing failed for %s", record.get("audio_id"))
 

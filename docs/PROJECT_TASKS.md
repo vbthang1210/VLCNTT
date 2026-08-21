@@ -72,7 +72,7 @@ Status: `IMPLEMENTED` / compile `PASS` / hardware `NOT VERIFIED`.
 - Uses ArduinoMqttClient.
 - Per-device command/status/event/error topics.
 - Command subscription QoS 1.
-- Status/event/error publish methods use QoS 1; status retained.
+- Status/event/error/audio-chunk publish methods use QoS 1; status retained.
 - LWT status OFFLINE retained; ONLINE status on successful connection.
 - Reconnect backoff is bounded.
 
@@ -94,7 +94,7 @@ Status: `IMPLEMENTED` / compile `PASS` / hardware decoder/network `NOT VERIFIED`
 Status: `IMPLEMENTED` / compile `PASS` / DAC/speaker `NOT VERIFIED`.
 
 - MP3/WAV generator selected by format query/URL.
-- External I2S defaults BCLK 26 / WS 25 / DOUT 22.
+- External I2S defaults BCLK 26 / WS 25 / DOUT 27.
 - Actual DAC wiring and playback require hardware.
 
 ### ESP-04.3 — Playback session lifecycle
@@ -103,7 +103,7 @@ Status: `IMPLEMENTED` / compile `PASS` / hardware `NOT VERIFIED`.
 - One active playback session.
 - New PLAY stops/releases previous session.
 - STOP releases generator, buffer, HTTP source and I2S.
-- PAUSE reports PAUSED.
+- PAUSE stops the I2S DMA channel before reporting PAUSED.
 - RESUME continues the paused decoder; PLAY remains a new playback from the beginning.
 - Completion emits STOPPED status and `PLAY_COMPLETED` event.
 - Stream failure emits ERROR status and `AUDIO_DOWNLOAD_FAILED`.
@@ -182,18 +182,18 @@ Status: `IMPLEMENTED` / fake-HTTP adapter tests `PASS` / real provider `NOT VERI
 Status: `IMPLEMENTED` / fake-HTTP adapter tests `PASS` / real Firestore `NOT VERIFIED`.
 
 - `CLOUD_PROVIDER=firestore` enables Firestore REST metadata writes.
+- `GET /api/v1/audio` reads Firestore metadata and merges it with Backend-local records when configured.
 - Upload/TTS metadata is written to `audio_metadata/{audio_id}`.
 - Device status is written to `device_status/{device_id}` from MQTT state ingestion.
 - Only light metadata/status fields are sent; Backend remains source of truth for audio bytes.
 - Missing project/token remains fail-closed; local development keeps `cloud_synced=false`.
 
-### BE-07 — Push notification adapter
-Status: `IMPLEMENTED` / fake-HTTP adapter and MQTT dispatch tests `PASS` / real FCM `NOT VERIFIED`.
+### BE-07 — Telegram notification adapter
+Status: `IMPLEMENTED` / fake-HTTP Telegram adapter and MQTT dispatch tests `PASS` / real delivery `NOT VERIFIED`.
 
-- `NOTIFICATION_PROVIDER=fcm` enables FCM HTTP v1.
-- MQTT events, device errors and `OFFLINE` status are forwarded to the configured device token.
+- `NOTIFICATION_PROVIDER=telegram` sends ONLINE transitions, MQTT events, device errors and OFFLINE transitions to one configured Telegram chat.
+- Missing Telegram bot token/chat ID fails closed; credentials are not committed.
 - Notification failure does not block MQTT state ingestion.
-- Missing FCM configuration remains fail-closed; no credentials are committed.
 
 ## EPIC FE — Node.js frontend
 
@@ -221,7 +221,7 @@ Actual result:
 23 passed in 4.56s
 ```
 
-Coverage includes health, upload, WAV metadata, list, stream bytes, 404, volume validation, provider boundaries, fake-HTTP TTS/Firestore/FCM adapters, upload/TTS metadata persistence, MQTT status persistence, notification dispatch, stale MQTT responses, error mapping, event storage and local Mosquitto/Paho QoS 1 round-trip.
+Coverage includes health, upload, WAV metadata, list, stream bytes, 404, volume validation, provider boundaries, fake-HTTP TTS/Firestore/Telegram adapter, upload/TTS metadata persistence, MQTT status persistence, notification dispatch, stale MQTT responses, error mapping, event storage and local Mosquitto/Paho QoS 1 round-trip.
 
 ### TEST-02 — Frontend syntax and HTTP smoke
 Status: `PASS` for available host checks.
@@ -273,7 +273,7 @@ Not verified:
 - Real MP3/WAV decode and I2S speaker output.
 |- Real TTS provider generation (provider credentials/endpoint not configured).
 |- Real Cloud database persistence (Firestore credentials/token not configured).
-|- Real push notification delivery (FCM credentials/device token not configured).
+|- Real push notification delivery (Telegram bot token/chat ID not configured).
 - Browser interaction automation.
 
 ## Current blockers
@@ -288,7 +288,7 @@ Not verified:
 
 1. Attach/configure ESP32 + DAC and run WiFi/MQTT/stream/I2S hardware tests.
 2. Configure a real TTS provider and run provider smoke tests.
-3. Configure Cloud metadata/notification providers and run Firestore/FCM smoke tests.
+3. Configure Cloud metadata/notification providers and run Firestore/Telegram smoke tests.
 4. Run browser E2E against the real device.
 
 ## EPIC REC — INMP441 microphone recording

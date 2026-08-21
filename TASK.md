@@ -19,7 +19,7 @@ Add the INMP441 microphone recording flow across Backend, Frontend, MQTT, and Ar
 PARTIAL — source submission hygiene and host verification are complete; physical ESP32/INMP441/LED/speaker, authenticated MQTT-over-LAN, trained-model inference, Cloud and browser/device E2E remain unverified.
 
 ## Current Issue
-No target ESP32/INMP441 board or LAN MQTT setup is available. The host-side Backend/Frontend/MQTT contract checks pass; this is not an end-to-end hardware completion claim. TTS, Firestore, and FCM remain separately unconfigured.
+No target ESP32/INMP441 board or LAN MQTT setup is available. The host-side Backend/Frontend/MQTT contract checks pass; this is not an end-to-end hardware completion claim. TTS, Firestore, and Telegram delivery remain separately unconfigured until local provider values are supplied.
 
 ## Related Files
 

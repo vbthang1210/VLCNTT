@@ -24,5 +24,8 @@ class AudioService:
     def delete_audio(self, audio_id: str):
         return self.repository.delete(audio_id)
 
+    def update_metadata(self, audio_id: str, updates: dict):
+        return self.repository.update_metadata(audio_id, updates)
+
 
 __all__ = ["AudioService"]

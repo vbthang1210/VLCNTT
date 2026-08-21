@@ -369,7 +369,7 @@
 - Đã sửa training CLI để không import Torch/Numpy khi chỉ import hoặc chạy `--help`; thêm `--dataset`, `--epochs`, `--seed`.
 - Đã tạo source package bên ngoài repo:
   - `C:\Users\vongb\Downloads\esp32-audio-system-source-final.zip`
-  - 82 source/test/docs/config files plus manifest; package audit không có `.pyc`, audio, checkpoint hoặc credential override.
+  - 100 source/test/docs/config files plus manifest; package audit không có `.pyc`, audio, checkpoint hoặc credential override.
 - Verification:
   - PASS — `npm run check`: 83 passed, 2 skipped.
   - PASS — `node frontend/test_app_contract.js`.
@@ -377,3 +377,106 @@
   - PASS — `git diff --check`.
   - 2 skipped — authenticated MQTT tests cần credential broker do người dùng cấp.
   - NOT VERIFIED — hardware, authenticated MQTT-over-LAN, live Cloud/FCM và trained Torch inference.
+
+### 2026-08-20 13:39 - Add Firebase Web Push registration
+
+- Đã thêm Firebase Web Push cho Dashboard:
+  - `frontend/public/firebase-notifications.js` xin quyền, đăng ký service worker, lấy FCM web token và gửi token về Backend.
+  - `frontend/public/firebase-messaging-sw.js` hiển thị notification khi trang chạy nền.
+  - `frontend/public/firebase-config.example.js` là template; `firebase-config.js` bị ignore.
+- Đã thêm `POST /api/v1/notifications/register`; token được validate, không trả lại trong response, và cập nhật thread-safe vào FCM adapter.
+- Verification:
+  - PASS — `npm run check`: 85 passed, 2 skipped.
+  - PASS — Firebase Web Push static contract and JS syntax tests.
+  - PASS — Python compile notification route/service.
+  - NOT VERIFIED — Firebase project/VAPID/browser permission và notification delivery trên điện thoại thật.
+
+### 2026-08-20 13:39 - Add native Android FCM client
+
+- Đã thêm thư mục `android/` cho native Android Kotlin:
+  - `FirebaseMessagingService` xử lý notification foreground và token refresh;
+  - Android 13+ notification permission;
+  - tự POST FCM token tới `/api/v1/notifications/register`;
+  - `google-services.json` và `gradle.properties` giữ local/ignored.
+- Verification:
+  - PASS — Android source contract: 2 passed.
+  - PASS — full host check: 87 passed, 2 skipped.
+  - NOT VERIFIED — Android Studio/Gradle/JDK 17 build, Firebase registration và phone delivery; host hiện chỉ có Java 8, chưa có Gradle/ADB/Android SDK.
+
+### 2026-08-20 16:54 - Identify registered notification phones
+
+- Đã mở rộng notification registry:
+  - Android gửi `installation_id`, model/device name và platform cùng FCM token;
+  - Backend lưu runtime registry, cập nhật `last_seen`, gửi notification tới mọi token đã đăng ký;
+  - Dashboard gọi `GET /api/v1/notifications/devices` và hiển thị tên/platform/`ACTIVE` hoặc `STALE`;
+  - API không trả FCM token; registry file bị ignore.
+- Verification:
+  - PASS — device registry/multi-device tests: 4 passed.
+  - PASS — full host check trước cleanup: 91 passed, 2 skipped.
+  - NOT VERIFIED — Android device heartbeat và FCM delivery thật.
+
+### 2026-08-20 17:34 - Add Telegram notification provider
+
+- Đã thêm provider `telegram` vào `NotificationService`:
+  - gửi `sendMessage` tới Telegram Bot API;
+  - format event/error/OFFLINE thành plain-text message tối đa 4096 ký tự;
+  - fail-closed khi thiếu bot token hoặc chat ID;
+  - FCM vẫn giữ làm provider tùy chọn.
+- `.env.example` đặt `NOTIFICATION_PROVIDER=telegram` làm đường mặc định đơn giản cho MVP.
+- Verification:
+  - PASS — fake Telegram HTTP adapter: 2 tests.
+  - NOT VERIFIED — Telegram Bot token/chat ID thật và message delivery thật.
+
+### 2026-08-20 17:56 - Remove unused FCM/Web Push/Android source
+
+- Đã xóa source không còn dùng sau khi chọn Telegram:
+  - native Android module;
+  - Firebase Web Push scripts/config/template;
+  - FCM token registry route, persistence, config và tests.
+- Giữ nguyên local `android/app/google-services.json` nếu người dùng đã có; file không được đọc, track hoặc đưa vào package.
+- Telegram là provider notification duy nhất của runtime MVP.
+- Verification:
+  - PASS — full host check: 83 passed, 2 skipped.
+  - PASS — active source reference scan không còn FCM/Web Push/Android implementation.
+  - PASS — Telegram-only submission package: `C:\Users\vongb\Downloads\esp32-audio-system-source-final.zip` (83 source/test/docs/config files + manifest).
+  - NOT VERIFIED — Telegram Bot token/chat ID thật và message delivery thật.
+
+### 2026-08-21 02:07 - Fix recording duration, online notification, Cloud list, QoS and pause
+
+- Recording:
+  - Khôi phục `RECORDING_DEFAULT_SECONDS` về `5UL`; test contract ngăn regression về 1 giây.
+  - File thực tế `rec_3db95b20.wav` có `18,944 samples = 1.184s`, phù hợp lỗi default 1 giây; firmware phải compile/upload lại.
+  - Audio PCM chunks đổi từ QoS 0 sang QoS 1 để tránh mất gói làm WAV ngắn; Backend vẫn deduplicate sequence cũ.
+- Telegram:
+  - Thêm thông báo `ESP32 online` khi status chuyển sang ONLINE.
+  - Retained OFFLINE ban đầu không bắn lặp; OFFLINE sau trạng thái ONLINE vẫn thông báo.
+- Pause:
+  - `AudioPlayer::pause()` dừng I2S DMA channel;
+  - `resume()` khởi tạo lại output I2S; lỗi re-init chuyển thành playback failure có kiểm soát.
+- Cloud/Web:
+  - Thêm Firestore REST `list_metadata()` có decode kiểu Firestore và pagination giới hạn.
+  - `GET /api/v1/audio` merge metadata Firestore với local records; Cloud lỗi thì fallback local.
+  - Cập nhật `SETUP_NEW_DEVICE.md` với `CLOUD_PROVIDER`, `CLOUD_PROJECT_ID`, `CLOUD_ACCESS_TOKEN`, `PUBLIC_BASE_URL` LAN.
+- Verification:
+  - PASS — targeted new tests: 7 passed.
+  - PASS — full host check: 91 passed, 2 skipped.
+  - PASS — Python compile và `git diff --check`.
+  - PASS — Arduino compile: 1,104,400 bytes (84%), RAM 53,368 bytes (16%); existing ESP8266Audio narrowing warning only.
+  - NOT VERIFIED — physical ESP32 duration after reflash, QoS delivery over live broker, I2S pause/resume hardware, live Firestore read, Telegram live delivery.
+
+### 2026-08-21 02:29 - Silence flush and generic error deduplication
+
+- Pause now sets I2S gain to zero, flushes silence into the DMA buffer, stops the I2S channel, and restores gain before RESUME.
+- Backend no longer sends a duplicate generic `DEVICE_ERROR` notification for a bare `status=ERROR`; it waits for the structured error topic such as `AUDIO_PLAYBACK_FAILED`.
+- Verification:
+  - PASS — full host check: 92 passed, 2 skipped.
+  - PASS — firmware compile: 1,104,452 bytes (84%), RAM 53,368 bytes (16%).
+  - PASS — pause silence and error dedup targeted tests.
+  - NOT VERIFIED — physical speaker pause/resume and live playback transport.
+
+### 2026-08-21 02:33 - Final upload gate inspection
+
+- PASS — current source host checks: 92 passed, 2 skipped.
+- PASS — current firmware compile: 1,104,452 bytes (84%), RAM 53,368 bytes (16%).
+- BLOCKED / NOT VERIFIED — Arduino CLI detected only `COM3`–`COM6` as `Standard Serial over Bluetooth link`; no USB ESP32 serial device/CH340/CP210x was connected, so firmware upload and Serial hardware E2E were not attempted.
+- Backend process was not listening on port 8000 during this gate; restart is required to load ONLINE/Cloud/error-dedup changes.

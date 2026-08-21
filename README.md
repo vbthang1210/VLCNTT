@@ -9,6 +9,7 @@ main/                         Arduino sketch
 backend/                      Flask API, storage, MQTT bridge, tests
 frontend/                     Node.js static web UI/server
 docs/PROJECT_TASKS.md         implementation status
+SETUP_NEW_DEVICE.md           full Windows setup and Telegram runbook
 ARCHITECTURE_LOG.md           development decisions
 TASK.md                       current task checkpoint
 LOG.md                        append-only task log
@@ -86,6 +87,38 @@ npm start
 ```
 
 Open `http://127.0.0.1:3000`.
+
+## Telegram notification
+
+Để nhận thông báo trực tiếp trong ứng dụng Telegram, tạo bot bằng `@BotFather`, gửi `/start` cho bot rồi cấu hình local:
+
+```text
+NOTIFICATION_PROVIDER=telegram
+TELEGRAM_BOT_TOKEN=<bot-token>
+TELEGRAM_CHAT_ID=<chat-id>
+```
+
+Backend gửi MQTT event/error/OFFLINE tới Telegram Bot API. Không cần Android app hoặc Firebase. Không gửi bot token vào chat và không commit token.
+
+Lấy chat ID local bằng Telegram Bot API sau khi gửi `/start` cho bot:
+
+```powershell
+$env:TELEGRAM_BOT_TOKEN = "BOT_TOKEN_CUA_BAN"
+(Invoke-RestMethod "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/getUpdates").result[-1].message.chat.id
+```
+
+## Firestore cloud metadata (optional)
+
+When configured, Backend reads Firestore `audio_metadata` documents and merges them into `GET /api/v1/audio` for the Web Dashboard. Audio bytes remain local in Backend storage; a Cloud-only record is metadata-only until its audio file is available locally.
+
+```text
+CLOUD_PROVIDER=firestore
+CLOUD_PROJECT_ID=<firebase-project-id>
+CLOUD_ACCESS_TOKEN=<local-oauth-access-token>
+CLOUD_COLLECTION=audio_metadata
+```
+
+If Firestore is not configured or temporarily unavailable, the Web Dashboard falls back to Backend-local metadata instead of returning an empty list.
 
 ## Firmware
 

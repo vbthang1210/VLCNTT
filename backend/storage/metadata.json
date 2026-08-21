@@ -1,1 +1,51 @@
-{}
+{
+  "audio_2082873e": {
+    "id": "audio_2082873e",
+    "audio_id": "audio_2082873e",
+    "filename": "audio_2082873e.mp3",
+    "original_filename": "MCK x \u0110\u00c0M V\u0128NH H\u01afNG x A$AP \u01af\u1edaT MI - N\u1ebeU NH\u01af TA CH\u1eb2NG C\u00d2N _ CAM GALA - THI\u00caN LONG B\u00c1T B\u1ed8 (H\u00c0 N\u1ed8I) - (320 Kbps) (1).mp3",
+    "format": "mp3",
+    "size": 14453086,
+    "status": "READY",
+    "duration": 333.415329,
+    "sample_rate": 44100,
+    "channels": 2
+  },
+  "audio_027eff3d": {
+    "id": "audio_027eff3d",
+    "audio_id": "audio_027eff3d",
+    "filename": "audio_027eff3d.mp3",
+    "original_filename": "tts_edge_vi-VN-HoaiMyNeural.mp3",
+    "format": "mp3",
+    "size": 30384,
+    "status": "READY",
+    "duration": 5.064,
+    "sample_rate": 24000,
+    "channels": 1
+  },
+  "rec_3c9a3c63": {
+    "id": "rec_3c9a3c63",
+    "audio_id": "rec_3c9a3c63",
+    "filename": "rec_3c9a3c63.wav",
+    "original_filename": "rec_3c9a3c63.wav",
+    "format": "wav",
+    "status": "READY",
+    "sample_rate": 16000,
+    "channels": 1,
+    "bits_per_sample": 16,
+    "source": "INMP441",
+    "device_id": "esp32_01",
+    "duration": 5.088,
+    "sample_count": 81408,
+    "recorded_at": "2026-08-20T19:10:27.497333+00:00",
+    "size": 162860,
+    "ai_label": null,
+    "ai_confidence": null,
+    "ai_accepted": false,
+    "ai_command": null,
+    "ai_state": null,
+    "ai_reason": "AI_WINDOW_INVALID",
+    "ai_published": false,
+    "ai_text": null
+  }
+}

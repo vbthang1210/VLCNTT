@@ -95,7 +95,9 @@ Cloud Service có thể gồm:
 ```text
 Firebase
 ├── Firestore
-└── Firebase Cloud Messaging
+└── (optional)
+
+Telegram Bot API handles the MVP phone notification path.
 ```
 
 Cloud KHÔNG phải submodule nằm trong Backend.
@@ -842,9 +844,12 @@ MQTT Event / LWT
 Backend
 ↓
 Cloud Notification Service
+(Telegram Bot API)
 ↓
 Điện thoại
 ```
+
+MVP dùng Telegram Bot API. Backend gửi event/error/OFFLINE tới chat ID cấu hình local; không lưu hoặc log bot token trong source.
 
 Ví dụ Event:
 

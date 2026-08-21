@@ -34,9 +34,8 @@ class Settings:
     cloud_project_id: str | None
     cloud_access_token: str | None
     cloud_collection: str
-    notification_project_id: str | None
-    notification_access_token: str | None
-    notification_device_token: str | None
+    telegram_bot_token: str | None
+    telegram_chat_id: str | None
 
     @classmethod
     def from_env(cls, overrides: dict | None = None) -> "Settings":
@@ -75,9 +74,8 @@ class Settings:
             cloud_project_id=values.get("CLOUD_PROJECT_ID") or None,
             cloud_access_token=values.get("CLOUD_ACCESS_TOKEN") or None,
             cloud_collection=values.get("CLOUD_COLLECTION", "audio_metadata"),
-            notification_project_id=values.get("NOTIFICATION_PROJECT_ID") or None,
-            notification_access_token=values.get("NOTIFICATION_ACCESS_TOKEN") or None,
-            notification_device_token=values.get("NOTIFICATION_DEVICE_TOKEN") or None,
+            telegram_bot_token=values.get("TELEGRAM_BOT_TOKEN") or None,
+            telegram_chat_id=values.get("TELEGRAM_CHAT_ID") or None,
         )
 
     def ensure_directories(self) -> None:

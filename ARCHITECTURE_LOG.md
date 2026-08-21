@@ -30,8 +30,8 @@ Status: IMPLEMENTED — real provider smoke tests require user-supplied, non-com
 
 - TTS provider: `TTS_PROVIDER=openai_compatible`; the endpoint must implement an OpenAI-compatible `/audio/speech` POST response containing MP3 or WAV bytes.
 - Firestore metadata: `CLOUD_PROVIDER=firestore`; only light audio metadata and device status are sent through the Firestore REST API. Audio bytes remain in Backend storage.
-- Push notifications: `NOTIFICATION_PROVIDER=fcm`; MQTT events, device errors and OFFLINE status are sent through FCM HTTP v1 to the configured device token.
-- Provider calls use bounded timeouts: TTS 15 seconds, Firestore/FCM 10 seconds.
+- Push notifications: `NOTIFICATION_PROVIDER=telegram`; ONLINE transitions, MQTT events, device errors and OFFLINE transitions are sent through the configured Telegram Bot chat.
+- Provider calls use bounded timeouts: TTS 15 seconds, Firestore/Telegram 10 seconds.
 - Missing provider configuration fails closed; fake-HTTP tests verify request contracts without pretending that an external delivery occurred.
 
 ## DEV-003 — INMP441 PCM recording pipeline
@@ -39,7 +39,7 @@ Status: IMPLEMENTED — real provider smoke tests require user-supplied, non-com
 Status: HOST IMPLEMENTED / firmware compile and hardware runtime NOT VERIFIED.
 
 - ESP32 command contract: `START_RECORDING` and `STOP_RECORDING` on `esp32/{device_id}/command`.
-- Audio topics: JSON start/end markers on `esp32/{device_id}/audio/start` and `/audio/end`; raw PCM s16le chunks on `/audio/chunk/{recording_id}/{sequence}`.
+- Audio topics: JSON start/end markers on `esp32/{device_id}/audio/start` and `/audio/end`; raw PCM s16le chunks on `/audio/chunk/{recording_id}/{sequence}` with QoS 1 for reliable delivery.
 - Audio contract: 16 kHz, mono, 16-bit PCM; firmware chunk size is 512 samples (1024 bytes) before MQTT overhead.
 - Backend assembles ordered chunks in a temporary file, writes a WAV header, and persists `rec_xxx.wav` plus local metadata.
 - Browser uses the Backend stream endpoint for `<audio controls>` and the download endpoint; it never connects to MQTT directly.

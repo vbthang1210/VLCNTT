@@ -42,6 +42,16 @@ class AudioRepository:
         with self._lock:
             return self._read_records().get(audio_id)
 
+    def update_metadata(self, audio_id: str, updates: dict) -> dict | None:
+        with self._lock:
+            records = self._read_records()
+            record = records.get(audio_id)
+            if record is None:
+                return None
+            record.update(updates)
+            self._write_records(records)
+            return record
+
     def delete(self, audio_id: str) -> dict | None:
         with self._lock:
             records = self._read_records()

@@ -33,6 +33,10 @@ def test_start_recording_stops_active_playback_first():
     assert block.index("audioPlayer.stop()") < block.index("microphoneRecorder.start")
 
 
+def test_recording_default_duration_is_five_seconds():
+    assert "#define RECORDING_DEFAULT_SECONDS 5UL" in CONFIG
+
+
 def test_play_stops_active_recording_first():
     block = section(MAIN, 'if (strcmp(action, "PLAY") == 0)', 'publishError(requestId, "UNKNOWN_COMMAND"')
     assert "microphoneRecorder.isRecording()" in block
@@ -66,9 +70,9 @@ def test_recording_retries_pending_chunks_during_mqtt_reconnect():
     assert "MIC_MQTT_RECOVERY_TIMEOUT_MS" in MICROPHONE
 
 
-def test_audio_chunks_use_nonblocking_mqtt_qos():
+def test_audio_chunks_use_qos_one_for_reliable_pcm_delivery():
     block = section(MQTT_MANAGER, "bool MqttManager::publishAudioChunk", "bool MqttManager::publishAudioEnd")
-    assert "false, 0" in block
+    assert "false, 1" in block
 
 
 def test_light_command_controls_led_and_publishes_event():
@@ -147,3 +151,14 @@ def test_resume_command_continues_paused_audio():
     assert 'strcmp(action, "RESUME")' in MAIN
     assert "audioPlayer.resume()" in MAIN
     assert 'publishState(requestId, "PLAYING"' in MAIN
+
+
+def test_pause_stops_i2s_and_resume_restarts_it():
+    audio_player = (ROOT / "main" / "audio_player.cpp").read_text(encoding="utf-8")
+    pause_block = section(audio_player, "bool AudioPlayer::pause()", "bool AudioPlayer::resume()")
+    resume_block = section(audio_player, "bool AudioPlayer::resume()", "bool AudioPlayer::setVolume")
+    assert "output_->SetGain(0.0f)" in pause_block
+    assert "output_->flush()" in pause_block
+    assert "output_->stop()" in pause_block
+    assert "output_->SetGain(static_cast<float>(volume_) / 100.0f)" in pause_block
+    assert "output_->begin()" in resume_block

@@ -9,22 +9,22 @@
 #endif
 
 #ifndef WIFI_SSID
-#define WIFI_SSID ""
+#define WIFI_SSID "BenThanh Apartment"
 #endif
 #ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD ""
+#define WIFI_PASSWORD "benthanh@"
 #endif
 #ifndef MQTT_HOST
-#define MQTT_HOST "127.0.0.1"
+#define MQTT_HOST "192.168.1.67"
 #endif
 #ifndef MQTT_PORT
 #define MQTT_PORT 1883
 #endif
 #ifndef MQTT_USERNAME
-#define MQTT_USERNAME ""
+#define MQTT_USERNAME "esp32_01"
 #endif
 #ifndef MQTT_PASSWORD
-#define MQTT_PASSWORD ""
+#define MQTT_PASSWORD "123"
 #endif
 #ifndef DEVICE_ID
 #define DEVICE_ID "esp32_01"
@@ -40,7 +40,7 @@
 #define I2S_WS_PIN 25
 #endif
 #ifndef I2S_DOUT_PIN
-#define I2S_DOUT_PIN 22
+#define I2S_DOUT_PIN 27
 #endif
 
 #ifndef MIC_I2S_BCLK_PIN
@@ -59,7 +59,7 @@
 #define MIC_SAMPLES_PER_CHUNK 512
 #endif
 #ifndef RECORDING_DEFAULT_SECONDS
-#define RECORDING_DEFAULT_SECONDS 1UL
+#define RECORDING_DEFAULT_SECONDS 5UL
 #endif
 #ifndef RECORDING_MAX_SECONDS
 #define RECORDING_MAX_SECONDS 60UL

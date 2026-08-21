@@ -387,40 +387,129 @@ def test_firestore_persists_device_status_in_separate_document():
     assert timeout == 10
 
 
-def test_fcm_notification_sends_event_to_device():
-    transport = CaptureTransport(FakeResponse(b'{"name":"message-id"}'))
-    service = NotificationService(
-        provider="fcm",
+def test_firestore_lists_audio_metadata_documents():
+    transport = CaptureTransport(
+        FakeResponse(
+            json.dumps(
+                {
+                    "documents": [
+                        {
+                            "name": "projects/project-test/databases/(default)/documents/audio_metadata/audio_1234",
+                            "fields": {
+                                "audio_id": {"stringValue": "audio_1234"},
+                                "filename": {"stringValue": "audio_1234.wav"},
+                                "duration": {"doubleValue": 1.25},
+                                "sample_rate": {"integerValue": "16000"},
+                                "status": {"stringValue": "READY"},
+                            },
+                        }
+                    ]
+                }
+            ).encode()
+        )
+    )
+    service = CloudService(
+        provider="firestore",
         project_id="project-test",
         access_token="token-test",
-        device_token="device-token",
+        collection="audio_metadata",
+        opener=transport,
+    )
+
+    records = service.list_metadata()
+
+    assert records == [
+        {
+            "audio_id": "audio_1234",
+            "filename": "audio_1234.wav",
+            "duration": 1.25,
+            "sample_rate": 16000,
+            "status": "READY",
+            "cloud_synced": True,
+        }
+    ]
+    http_request, timeout = transport.requests[0]
+    assert http_request.full_url.endswith(
+        "/v1/projects/project-test/databases/(default)/documents/audio_metadata?pageSize=100"
+    )
+    assert http_request.get_header("Authorization") == "Bearer token-test"
+    assert timeout == 10
+
+
+def test_audio_api_merges_cloud_metadata_with_local_records(client):
+    class FakeCloudService:
+        def list_metadata(self):
+            return [
+                {
+                    "audio_id": "cloud_only",
+                    "filename": "cloud_only.wav",
+                    "duration": 2.5,
+                    "format": "wav",
+                    "status": "READY",
+                    "cloud_synced": True,
+                }
+            ]
+
+    client.application.extensions["cloud_service"] = FakeCloudService()
+
+    response = client.get("/api/v1/audio")
+
+    assert response.status_code == 200
+    assert response.json["data"] == [
+        {
+            "audio_id": "cloud_only",
+            "filename": "cloud_only.wav",
+            "duration": 2.5,
+            "format": "wav",
+            "status": "READY",
+            "cloud_synced": True,
+            "local_available": False,
+        }
+    ]
+
+
+def test_telegram_notification_sends_message_to_chat():
+    transport = CaptureTransport(FakeResponse(b'{"ok":true,"result":{"message_id":1}}'))
+    service = NotificationService(
+        provider="telegram",
+        telegram_bot_token="bot-token",
+        telegram_chat_id="12345",
         opener=transport,
     )
 
     assert service.notify(
-        {
-            "device_id": "esp32_01",
-            "event": "PLAY_COMPLETED",
-            "request_id": "req_1",
-            "audio_id": "audio_1",
-        }
+        {"device_id": "esp32_01", "event": "RECORDING_COMPLETED"}
     ) is True
 
-    request, timeout = transport.requests[0]
-    assert request.full_url.endswith("/v1/projects/project-test/messages:send")
-    assert request.get_header("Authorization") == "Bearer token-test"
-    payload = request_json(request)
-    assert payload["message"]["token"] == "device-token"
-    assert payload["message"]["notification"]["title"] == "ESP32 event: PLAY_COMPLETED"
-    assert "esp32_01" in payload["message"]["notification"]["body"]
-    assert payload["message"]["data"]["event"] == "PLAY_COMPLETED"
-    assert payload["message"]["data"]["request_id"] == "req_1"
+    http_request, timeout = transport.requests[0]
+    assert http_request.full_url == "https://api.telegram.org/botbot-token/sendMessage"
+    assert request_json(http_request) == {
+        "chat_id": "12345",
+        "text": "🔔 ESP32 event: RECORDING_COMPLETED\nesp32_01: RECORDING_COMPLETED",
+        "disable_web_page_preview": True,
+    }
     assert timeout == 10
 
 
-def test_fcm_notification_requires_configuration():
+def test_telegram_notification_requires_configuration():
     with pytest.raises(NotificationNotConfigured):
-        NotificationService(provider="fcm").notify({"event": "DEVICE_OFFLINE"})
+        NotificationService(provider="telegram").notify({"event": "DEVICE_OFFLINE"})
+
+
+def test_telegram_notification_formats_online_status():
+    transport = CaptureTransport(FakeResponse(b'{"ok":true,"result":{"message_id":1}}'))
+    service = NotificationService(
+        provider="telegram",
+        telegram_bot_token="bot-token",
+        telegram_chat_id="12345",
+        opener=transport,
+    )
+
+    assert service.notify({"device_id": "esp32_01", "status": "ONLINE"}) is True
+
+    assert request_json(transport.requests[0][0])["text"] == (
+        "🔔 ESP32 online\nesp32_01 is online"
+    )
 
 
 def test_upload_persists_audio_metadata_through_cloud_service(client):
@@ -551,3 +640,141 @@ def test_mqtt_offline_status_dispatches_push_notification():
     service._on_message(None, None, message)
 
     assert calls[0]["status"] == "OFFLINE"
+
+
+def test_mqtt_online_status_dispatches_notification_on_transition():
+    calls = []
+
+    class FakeNotificationService:
+        def notify(self, event):
+            calls.append(event)
+            return True
+
+    settings = SimpleNamespace(
+        mqtt_enabled=True,
+        mqtt_host="127.0.0.1",
+        mqtt_port=1883,
+        mqtt_username=None,
+        mqtt_password=None,
+    )
+    service = MqttService(
+        settings,
+        DeviceStateStore(),
+        notification_service=FakeNotificationService(),
+    )
+    message = SimpleNamespace(
+        topic="esp32/esp32_01/status",
+        retain=True,
+        payload=b'{"device_id":"esp32_01","status":"ONLINE"}',
+    )
+
+    service._on_message(None, None, message)
+
+    assert calls == [{"device_id": "esp32_01", "status": "ONLINE"}]
+
+
+def test_status_error_without_details_does_not_duplicate_error_notification():
+    calls = []
+
+    class FakeNotificationService:
+        def notify(self, event):
+            calls.append(event)
+            return True
+
+    settings = SimpleNamespace(
+        mqtt_enabled=True,
+        mqtt_host="127.0.0.1",
+        mqtt_port=1883,
+        mqtt_username=None,
+        mqtt_password=None,
+    )
+    service = MqttService(
+        settings,
+        DeviceStateStore(),
+        notification_service=FakeNotificationService(),
+    )
+    message = SimpleNamespace(
+        topic="esp32/esp32_01/status",
+        payload=b'{"device_id":"esp32_01","status":"ERROR"}',
+    )
+
+    service._on_message(None, None, message)
+
+    assert calls == []
+
+
+def test_retained_offline_status_does_not_notify_from_initial_offline_state():
+    calls = []
+
+    class FakeNotificationService:
+        def notify(self, event):
+            calls.append(event)
+            return True
+
+    settings = SimpleNamespace(
+        mqtt_enabled=True,
+        mqtt_host="127.0.0.1",
+        mqtt_port=1883,
+        mqtt_username=None,
+        mqtt_password=None,
+    )
+    service = MqttService(
+        settings,
+        DeviceStateStore(),
+        notification_service=FakeNotificationService(),
+    )
+    message = SimpleNamespace(
+        topic="esp32/esp32_01/status",
+        retain=True,
+        payload=json.dumps(
+            {
+                "device_id": "esp32_01",
+                "status": "OFFLINE",
+                "reason": "UNEXPECTED_DISCONNECT",
+            }
+        ).encode(),
+    )
+
+    service._on_message(None, None, message)
+
+    assert calls == []
+
+
+def test_retained_offline_after_online_still_notifies():
+    calls = []
+
+    class FakeNotificationService:
+        def notify(self, event):
+            calls.append(event)
+            return True
+
+    settings = SimpleNamespace(
+        mqtt_enabled=True,
+        mqtt_host="127.0.0.1",
+        mqtt_port=1883,
+        mqtt_username=None,
+        mqtt_password=None,
+    )
+    service = MqttService(
+        settings,
+        DeviceStateStore(),
+        notification_service=FakeNotificationService(),
+    )
+    online = SimpleNamespace(
+        topic="esp32/esp32_01/status",
+        retain=True,
+        payload=b'{"device_id":"esp32_01","status":"ONLINE"}',
+    )
+    offline = SimpleNamespace(
+        topic="esp32/esp32_01/status",
+        retain=True,
+        payload=b'{"device_id":"esp32_01","status":"OFFLINE"}',
+    )
+
+    service._on_message(None, None, online)
+    service._on_message(None, None, offline)
+
+    assert calls == [
+        {"device_id": "esp32_01", "status": "ONLINE"},
+        {"device_id": "esp32_01", "status": "OFFLINE"},
+    ]

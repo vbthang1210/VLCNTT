@@ -27,6 +27,7 @@ backend/test_artifacts/*
 
 # Local hardware configuration override
 main/config.local.h
+android/app/google-services.json
 
 # 
 dataset/raw/
