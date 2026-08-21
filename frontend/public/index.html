@@ -144,6 +144,7 @@
 
               <!-- AI Voice Recognition Result Badge -->
               <div class="ai-result-card" id="aiResultCard">
+<<<<<<< Updated upstream
                 <div class="ai-result-header">
                   <span class="ai-badge">🤖 KẾT QUẢ NHẬN DIỆN TỪ KHÓA (AI VOICE COMMAND)</span>
                   <span class="confidence-badge" id="aiConfidenceBadge">Đang chờ lệnh...</span>
@@ -158,13 +159,87 @@
                   <span id="aiPublishStatus" class="meta-tag">MQTT: Sẵn sàng</span>
                 </div>
               </div>
+=======
+>>>>>>> Stashed changes
 
-              <p class="tech-spec-hint">
-                <span>Chuẩn thu: <strong>PCM 16,000 Hz · Mono · 16-bit</strong></span>
-                <span>Lưu tại: <strong>Backend Local Storage & Đồng bộ Firestore Cloud</strong></span>
-              </p>
-            </div>
-          </div>
+                <div class="ai-result-header">
+                  <span class="ai-badge">
+                    🤖 KẾT QUẢ NHẬN DIỆN TỪ KHÓA (AI VOICE COMMAND)
+                  </span>
+
+                  <span
+                    class="confidence-badge"
+                    id="aiConfidenceBadge"
+                  >
+                    Đang chờ lệnh...
+                  </span>
+                </div>
+
+                <!-- ============================================================
+                    AI INPUT SOURCE
+                    Giữ nguyên Micro INMP441 và bổ sung khả năng chọn WAV.
+                    ============================================================ -->
+
+                <div
+                  class="ai-meta-row"
+                  style="margin-bottom: 12px;"
+                >
+
+                  <input
+                    id="aiTestFile"
+                    type="file"
+                    accept="audio/wav,.wav"
+                  >
+
+                  <button
+                    id="aiPredictFileButton"
+                    class="btn btn-primary small"
+                    type="button"
+                  >
+                    📁 Dự đoán từ WAV
+                  </button>
+
+                </div>
+
+                <!-- ============================================================
+                    AI RESULT
+                    Dùng chung cho cả Micro INMP441 và WAV upload.
+                    ============================================================ -->
+
+                <div class="ai-transcript-box">
+
+                  <span class="transcript-icon">
+                    🗣️
+                  </span>
+
+                  <span
+                    class="transcript-text"
+                    id="aiTranscriptText"
+                  >
+                    Nói vào Micro INMP441 hoặc chọn file WAV để AI dự đoán...
+                  </span>
+
+                </div>
+
+                <div class="ai-meta-row">
+
+                  <span
+                    id="aiCommandResult"
+                    class="meta-tag"
+                  >
+                    Lệnh: Chưa có
+                  </span>
+
+                  <span
+                    id="aiPublishStatus"
+                    class="meta-tag"
+                  >
+                    MQTT: Sẵn sàng
+                  </span>
+
+                </div>
+
+              </div>
 
           <!-- Tab Content 2: Browser Web Mic with Live STT -->
           <div class="tab-pane" id="paneWebMic">

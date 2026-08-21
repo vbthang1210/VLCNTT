@@ -6,6 +6,11 @@ const BACKEND = window.BACKEND_BASE_URL || `${backendProtocol}//${backendHost}:8
 const deviceId = document.querySelector('#deviceId');
 const audioList = document.querySelector('#audioList');
 const upload = document.querySelector('#upload');
+
+// Upload WAV trực tiếp vào pipeline AI Voice Command
+const aiTestFile = document.querySelector('#aiTestFile');
+const aiPredictFileButton = document.querySelector('#aiPredictFileButton');
+
 const message = document.querySelector('#message');
 const status = document.querySelector('#status');
 const volume = document.querySelector('#volume');
@@ -792,6 +797,316 @@ upload.addEventListener('change', async () => {
     showMessage(`Tải lên thất bại: ${error.message}`);
   }
 });
+
+// ==========================================================================
+// AI Voice Command from WAV File
+// ==========================================================================
+
+if (aiTestFile) {
+
+  aiTestFile.addEventListener('change', () => {
+
+    const file = aiTestFile.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    // Chỉ cập nhật UI.
+    // Chưa chạy AI cho đến khi người dùng bấm nút.
+    aiTranscriptText.textContent =
+      `Đã chọn file: ${file.name}`;
+
+    aiConfidenceBadge.textContent =
+      'Sẵn sàng dự đoán';
+
+    aiCommandResult.textContent =
+      'Lệnh: Chưa chạy';
+
+    aiPublishStatus.textContent =
+      'MQTT: Chưa gửi';
+
+  });
+
+}
+
+
+if (aiPredictFileButton) {
+
+  aiPredictFileButton.addEventListener(
+    'click',
+    async () => {
+
+      // ================================================================
+      // 1. Get selected WAV
+      // ================================================================
+
+      const file = aiTestFile?.files?.[0];
+
+      if (!file) {
+
+        showMessage(
+          'Vui lòng chọn file WAV trước.'
+        );
+
+        return;
+      }
+
+
+      // ================================================================
+      // 2. Validate extension
+      // ================================================================
+
+      if (!file.name.toLowerCase().endsWith('.wav')) {
+
+        showMessage(
+          'AI Voice Command hiện chỉ hỗ trợ file WAV.'
+        );
+
+        return;
+      }
+
+
+      // ================================================================
+      // 3. Validate device
+      // ================================================================
+
+      const targetDeviceId =
+        deviceId.value.trim();
+
+      if (!targetDeviceId) {
+
+        showMessage(
+          'Vui lòng nhập Device ID của ESP32.'
+        );
+
+        return;
+      }
+
+
+      // ================================================================
+      // 4. Build request
+      // ================================================================
+
+      const form =
+        new FormData();
+
+      form.append(
+        'file',
+        file
+      );
+
+      form.append(
+        'device_id',
+        targetDeviceId
+      );
+
+
+      // ================================================================
+      // 5. Loading UI
+      // ================================================================
+
+      aiPredictFileButton.disabled =
+        true;
+
+      aiPredictFileButton.textContent =
+        '⏳ Đang dự đoán...';
+
+
+      aiTranscriptText.textContent =
+        `Đang xử lý ${file.name}...`;
+
+      aiConfidenceBadge.textContent =
+        'AI đang chạy';
+
+      aiCommandResult.textContent =
+        'Lệnh: Đang xác định';
+
+      aiPublishStatus.textContent =
+        'MQTT: Đang chờ';
+
+
+      showMessage(
+        `Đang chạy AI với ${file.name}...`
+      );
+
+
+      try {
+
+        // ==============================================================
+        // 6. Upload WAV
+        //
+        // Backend:
+        //
+        // ai_routes.py
+        //      ↓
+        // AudioRepository
+        //      ↓
+        // VoiceCommandService
+        //      ↓
+        // AIService
+        //      ↓
+        // LIGHT ON/OFF
+        //      ↓
+        // MQTT
+        //
+        // ==============================================================
+
+        const prediction =
+          await api(
+            '/api/v1/ai/predict-file',
+            {
+              method: 'POST',
+              body: form,
+            }
+          );
+
+
+        // ==============================================================
+        // 7. Confidence
+        // ==============================================================
+
+        const confidence =
+          Number(prediction.confidence);
+
+
+        const confidencePercent =
+          Number.isFinite(confidence)
+            ? `${(confidence * 100).toFixed(2)}%`
+            : '--';
+
+
+        // ==============================================================
+        // 8. Display AI result
+        // ==============================================================
+
+        aiConfidenceBadge.textContent =
+          `Độ tin cậy: ${confidencePercent}`;
+
+
+        if (prediction.accepted) {
+
+          aiTranscriptText.textContent =
+            `AI nhận diện: "${prediction.label}"`;
+
+        } else {
+
+          aiTranscriptText.textContent =
+            `AI không chấp nhận kết quả: "${prediction.label}"`;
+
+        }
+
+
+        // ==============================================================
+        // 9. Display command
+        // ==============================================================
+
+        if (
+          prediction.command &&
+          prediction.state
+        ) {
+
+          aiCommandResult.textContent =
+            `Lệnh: ${prediction.command} ${prediction.state}`;
+
+        } else {
+
+          aiCommandResult.textContent =
+            `Lệnh: Không gửi (${prediction.reason || 'NO_ACTION'})`;
+
+        }
+
+
+        // ==============================================================
+        // 10. Display MQTT status
+        // ==============================================================
+
+        if (prediction.published) {
+
+          aiPublishStatus.textContent =
+            'MQTT: Đã gửi tới ESP32';
+
+        } else {
+
+          aiPublishStatus.textContent =
+            `MQTT: Chưa gửi (${prediction.reason || 'UNKNOWN'})`;
+
+        }
+
+
+        // ==============================================================
+        // 11. Global message
+        // ==============================================================
+
+        if (prediction.published) {
+
+          showMessage(
+            `AI: ${prediction.label} `
+            + `(${confidencePercent}) → `
+            + `${prediction.command} ${prediction.state} → `
+            + `đã gửi MQTT tới ${targetDeviceId}.`
+          );
+
+        } else {
+
+          showMessage(
+            `AI: ${prediction.label} `
+            + `(${confidencePercent}) · `
+            + `${prediction.reason || 'Không có lệnh MQTT được gửi'}.`
+          );
+
+        }
+
+
+        // File được backend lưu vào AudioRepository,
+        // nên refresh Audio Library.
+        await refreshAudio();
+
+      }
+
+      catch (error) {
+
+        // ==============================================================
+        // 12. Error
+        // ==============================================================
+
+        aiTranscriptText.textContent =
+          'Dự đoán file WAV thất bại';
+
+        aiConfidenceBadge.textContent =
+          'AI Error';
+
+        aiCommandResult.textContent =
+          'Lệnh: Không có';
+
+        aiPublishStatus.textContent =
+          'MQTT: Không gửi';
+
+
+        showMessage(
+          `AI dự đoán thất bại: ${error.message}`
+        );
+
+      }
+
+      finally {
+
+        // ==============================================================
+        // 13. Restore button
+        // ==============================================================
+
+        aiPredictFileButton.disabled =
+          false;
+
+        aiPredictFileButton.textContent =
+          '📁 Dự đoán từ WAV';
+
+      }
+
+    }
+  );
+
+}
 
 document.querySelector('#tts').addEventListener('click', async () => {
   const text = document.querySelector('#ttsText').value.trim();
