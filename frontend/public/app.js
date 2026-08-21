@@ -216,6 +216,9 @@ function updateNowPlayingDisplay(record) {
       textContent = `Tệp âm thanh: ${name}`;
     }
   }
+  if (record.local_available === false) {
+    textContent = 'Chỉ có metadata Cloud; file audio local không tồn tại trên Backend.';
+  }
 
   if (nowPlayingSubtitle) {
     nowPlayingSubtitle.textContent = textContent;
@@ -227,7 +230,9 @@ function updatePreview() {
   audioPreview.removeAttribute('src');
   if (audioList.value) {
     const record = audioCache.find((r) => r.audio_id === audioList.value);
-    audioPreview.src = streamUrl(audioList.value);
+    if (record && record.local_available !== false) {
+      audioPreview.src = streamUrl(audioList.value);
+    }
     updateNowPlayingDisplay(record);
   } else {
     updateNowPlayingDisplay(null);
@@ -382,6 +387,15 @@ function filterAndRenderRecords() {
 
     card.appendChild(techGrid);
 
+    if (record.local_available === false) {
+      const cloudNotice = document.createElement('p');
+      cloudNotice.className = 'hint';
+      cloudNotice.textContent = 'Chỉ có metadata Cloud; không thể phát, tải hoặc xóa file local.';
+      card.appendChild(cloudNotice);
+      audioRecords.appendChild(card);
+      continue;
+    }
+
     // Built-in Audio Player
     const player = document.createElement('audio');
     player.controls = true;
@@ -460,18 +474,22 @@ async function refreshAudio() {
     for (const record of records) {
       const option = document.createElement('option');
       option.value = record.audio_id;
+      option.disabled = record.local_available === false;
       const durationText = record.duration ? ` · ${Number(record.duration).toFixed(1)}s` : '';
       const textSnippet = record.ai_text ? ` [${record.ai_text}]` : '';
-      option.textContent = `${record.original_filename || record.filename} (${(record.format || 'wav').toUpperCase()}${durationText})${textSnippet}`;
+      const cloudText = record.local_available === false ? ' — metadata Cloud only' : '';
+      option.textContent = `${record.original_filename || record.filename} (${(record.format || 'wav').toUpperCase()}${durationText})${textSnippet}${cloudText}`;
       audioList.appendChild(option);
     }
 
     if (!records.length) {
       audioList.add(new Option('Chưa có tệp âm thanh nào', ''));
     } else {
-      audioList.value = records.some((record) => record.audio_id === selectedId)
+      const selected = records.find((record) => record.audio_id === selectedId);
+      const firstLocal = records.find((record) => record.local_available !== false);
+      audioList.value = selected && selected.local_available !== false
         ? selectedId
-        : records[0].audio_id;
+        : (firstLocal || records[0]).audio_id;
     }
 
     updatePreview();

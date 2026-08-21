@@ -171,7 +171,13 @@ void onMqttCommand(const char* payload, size_t length) {
 
   if (strcmp(action, "START_RECORDING") == 0) {
     const char* recordingId = command["recording_id"] | "";
-    const uint32_t duration = command["duration_seconds"] | RECORDING_DEFAULT_SECONDS;
+    const JsonVariant durationValue = command["duration_seconds"];
+    if (durationValue.isNull()) {
+      publishError(requestId, "RECORDING_FIELDS_INVALID",
+                   "duration_seconds is required");
+      return;
+    }
+    const uint32_t duration = durationValue | 0UL;
     if (!isSafeCommandIdentifier(recordingId) || duration == 0 || duration > RECORDING_MAX_SECONDS) {
       publishError(requestId, "RECORDING_FIELDS_INVALID",
                    "recording_id and duration_seconds are required");

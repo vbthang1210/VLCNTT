@@ -38,7 +38,7 @@ bool MicrophoneRecorder::start(const char* requestId, const char* recordingId,
   }
   snprintf(requestId_, sizeof(requestId_), "%s", requestId);
   snprintf(recordingId_, sizeof(recordingId_), "%s", recordingId);
-  if (!mqtt_->publishAudioStart(recordingId_, MIC_SAMPLE_RATE, 1, 16)) {
+  if (!mqtt_->publishAudioStart(recordingId_, MIC_SAMPLE_RATE, 1, 16, durationSeconds)) {
     releaseDriver();
     return false;
   }

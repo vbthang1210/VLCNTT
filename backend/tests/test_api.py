@@ -98,6 +98,7 @@ def test_upload_returns_local_success_when_cloud_sync_fails(client):
 
     assert response.status_code == 201
     assert response.json["data"]["cloud_synced"] is False
+    assert response.json["data"]["local_available"] is True
     record = response.json["data"]
     assert (client.application.config["SETTINGS"].storage_path / record["filename"]).is_file()
 

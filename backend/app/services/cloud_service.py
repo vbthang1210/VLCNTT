@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib import request
 from urllib.error import HTTPError
 
@@ -164,6 +164,25 @@ class CloudService:
             if not page_token:
                 break
         return records
+
+    def delete_metadata(self, audio_id: str) -> bool:
+        if self.provider != "firestore" or not self.project_id or not self.access_token:
+            if self.provider:
+                raise CloudNotConfigured("Firestore requires project ID and access token")
+            return False
+        if not isinstance(audio_id, str) or not audio_id:
+            raise ValueError("audio_id is required")
+        url = (
+            f"https://firestore.googleapis.com/v1/projects/{self.project_id}"
+            f"/databases/(default)/documents/{self.collection}/{quote(audio_id, safe='')}"
+        )
+        http_request = request.Request(
+            url,
+            headers={"Authorization": f"Bearer {self.access_token}"},
+            method="DELETE",
+        )
+        self._send(http_request, "delete metadata")
+        return True
 
     def save_status(self, status: dict) -> dict:
         if self.provider != "firestore" or not self.project_id or not self.access_token:

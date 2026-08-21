@@ -176,7 +176,8 @@ bool MqttManager::publishError(const char* payload) {
 }
 
 bool MqttManager::publishAudioStart(const char* recordingId, uint32_t sampleRate,
-                                    uint8_t channels, uint8_t bitsPerSample) {
+                                    uint8_t channels, uint8_t bitsPerSample,
+                                    uint32_t durationSeconds) {
   if (!isSafeIdentifier(recordingId)) {
     return false;
   }
@@ -186,6 +187,7 @@ bool MqttManager::publishAudioStart(const char* recordingId, uint32_t sampleRate
   start["sample_rate"] = sampleRate;
   start["channels"] = channels;
   start["bits_per_sample"] = bitsPerSample;
+  start["duration_seconds"] = durationSeconds;
   start["format"] = "pcm_s16le";
 
   char payload[224];

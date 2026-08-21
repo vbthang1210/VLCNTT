@@ -436,7 +436,30 @@ def test_firestore_lists_audio_metadata_documents():
     assert timeout == 10
 
 
-def test_audio_api_merges_cloud_metadata_with_local_records(client):
+def test_firestore_deletes_stale_audio_metadata_document():
+    transport = CaptureTransport(FakeResponse(b""))
+    service = CloudService(
+        provider="firestore",
+        project_id="project-test",
+        access_token="token-test",
+        collection="audio_metadata",
+        opener=transport,
+    )
+
+    assert service.delete_metadata("audio_1234") is True
+
+    http_request, timeout = transport.requests[0]
+    assert http_request.full_url.endswith(
+        "/v1/projects/project-test/databases/(default)/documents/audio_metadata/audio_1234"
+    )
+    assert http_request.method == "DELETE"
+    assert http_request.get_header("Authorization") == "Bearer token-test"
+    assert timeout == 10
+
+
+def test_audio_api_removes_cloud_only_metadata_records(client):
+    deleted = []
+
     class FakeCloudService:
         def list_metadata(self):
             return [
@@ -450,22 +473,17 @@ def test_audio_api_merges_cloud_metadata_with_local_records(client):
                 }
             ]
 
+        def delete_metadata(self, audio_id):
+            deleted.append(audio_id)
+            return True
+
     client.application.extensions["cloud_service"] = FakeCloudService()
 
     response = client.get("/api/v1/audio")
 
     assert response.status_code == 200
-    assert response.json["data"] == [
-        {
-            "audio_id": "cloud_only",
-            "filename": "cloud_only.wav",
-            "duration": 2.5,
-            "format": "wav",
-            "status": "READY",
-            "cloud_synced": True,
-            "local_available": False,
-        }
-    ]
+    assert response.json["data"] == []
+    assert deleted == ["cloud_only"]
 
 
 def test_telegram_notification_sends_message_to_chat():

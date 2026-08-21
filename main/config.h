@@ -9,13 +9,13 @@
 #endif
 
 #ifndef WIFI_SSID
-#define WIFI_SSID "BenThanh Apartment"
+#define WIFI_SSID "huylasiunhan"
 #endif
 #ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD "benthanh@"
+#define WIFI_PASSWORD "huylasiunhan187"
 #endif
 #ifndef MQTT_HOST
-#define MQTT_HOST "192.168.1.67"
+#define MQTT_HOST "172.20.10.3"
 #endif
 #ifndef MQTT_PORT
 #define MQTT_PORT 1883

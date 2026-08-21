@@ -33,6 +33,13 @@ def test_start_recording_stops_active_playback_first():
     assert block.index("audioPlayer.stop()") < block.index("microphoneRecorder.start")
 
 
+def test_start_recording_requires_explicit_duration_seconds():
+    block = section(MAIN, 'if (strcmp(action, "START_RECORDING") == 0)', 'if (strcmp(action, "STOP_RECORDING") == 0)')
+    assert "duration_seconds" in block
+    assert ".isNull()" in block
+    assert "| RECORDING_DEFAULT_SECONDS" not in block
+
+
 def test_recording_default_duration_is_five_seconds():
     assert "#define RECORDING_DEFAULT_SECONDS 5UL" in CONFIG
 
@@ -118,6 +125,13 @@ def test_mqtt_manager_json_publishers_use_bounded_serialization():
     for block in (connect_block, start_block, end_block, error_block):
         assert "serializeMqttJson" in block
         assert "snprintf" not in block
+
+
+def test_recording_start_marker_carries_requested_duration():
+    start_block = section(MQTT_MANAGER, "bool MqttManager::publishAudioStart", "bool MqttManager::publishAudioChunk")
+    assert "uint32_t durationSeconds" in start_block
+    assert 'start["duration_seconds"] = durationSeconds' in start_block
+    assert "publishAudioStart(recordingId_, MIC_SAMPLE_RATE, 1, 16, durationSeconds)" in MICROPHONE
 
 
 def test_mqtt_manager_rejects_unsafe_identifiers_and_topic_truncation():

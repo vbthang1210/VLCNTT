@@ -50,7 +50,22 @@ def list_audio():
         return ok(local_records, "Loaded local audio; Cloud metadata unavailable")
     if not cloud_records:
         return ok(local_records)
-    return ok(merge_audio_records(local_records, cloud_records))
+    local_ids = {
+        record.get("audio_id")
+        for record in local_records
+        if record.get("audio_id")
+    }
+    available_cloud_records = []
+    for cloud_record in cloud_records:
+        audio_id = cloud_record.get("audio_id")
+        if audio_id and audio_id not in local_ids:
+            try:
+                cloud_service.delete_metadata(audio_id)
+            except (CloudNotConfigured, RuntimeError, ValueError, AttributeError) as exc:
+                current_app.logger.warning("Stale Cloud metadata delete failed for %s: %s", audio_id, exc)
+            continue
+        available_cloud_records.append(cloud_record)
+    return ok(merge_audio_records(local_records, available_cloud_records))
 
 
 @audio_blueprint.get("/<audio_id>")
@@ -84,10 +99,12 @@ def upload_audio():
     except Exception:
         return error("AUDIO_PROCESSING_FAILED", "Audio could not be processed", 422)
     try:
-        record = current_app.extensions["cloud_service"].save_metadata(record)
+        local_record = {**record, "local_available": True}
+        cloud_record = current_app.extensions["cloud_service"].save_metadata(record)
+        record = {**local_record, **cloud_record, "local_available": True}
     except Exception:
         current_app.logger.warning("Cloud metadata sync failed for %s", record["audio_id"], exc_info=True)
-        record = {**record, "cloud_synced": False}
+        record = {**record, "cloud_synced": False, "local_available": True}
         return ok(record, "Audio uploaded locally; Cloud sync pending", 201)
     return ok(record, "Audio uploaded", 201)
 

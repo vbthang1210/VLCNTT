@@ -19,7 +19,8 @@ class MqttManager {
   bool publishEvent(const char* payload);
   bool publishError(const char* payload);
   bool publishAudioStart(const char* recordingId, uint32_t sampleRate,
-                        uint8_t channels, uint8_t bitsPerSample);
+                         uint8_t channels, uint8_t bitsPerSample,
+                         uint32_t durationSeconds);
   bool publishAudioChunk(const char* recordingId, uint32_t sequence,
                          const int16_t* samples, size_t sampleCount);
   bool publishAudioEnd(const char* recordingId, uint32_t totalChunks,

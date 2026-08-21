@@ -480,3 +480,45 @@
 - PASS — current firmware compile: 1,104,452 bytes (84%), RAM 53,368 bytes (16%).
 - BLOCKED / NOT VERIFIED — Arduino CLI detected only `COM3`–`COM6` as `Standard Serial over Bluetooth link`; no USB ESP32 serial device/CH340/CP210x was connected, so firmware upload and Serial hardware E2E were not attempted.
 - Backend process was not listening on port 8000 during this gate; restart is required to load ONLINE/Cloud/error-dedup changes.
+
+### 2026-08-21 09:58 - Fix repeated WiFi STA connection attempts
+
+- Root cause confirmed from Serial: `WifiManager::update()` called `WiFi.begin()` again on the reconnect backoff while the previous STA attempt was still active.
+- Added `connectionInProgress_`, attempt start timestamp and 15-second timeout; active attempts are no longer reconfigured.
+- Failed/timed-out attempts call `WiFi.disconnect(false, false)` before scheduling the next attempt.
+- Verification:
+  - PASS — WiFi reconnect contract test.
+  - PASS — full host check: 93 passed, 2 skipped.
+  - PASS — Arduino compile: 1,104,760 bytes (84%), RAM 53,376 bytes (16%).
+  - NOT VERIFIED — upload/Serial after flash because only Bluetooth COM ports were detected.
+
+### 2026-08-21 10:12 - Remove early WiFi retry race after failure status
+
+- Runtime evidence showed `WL_CONNECT_FAILED` could be reported while the ESP32 WiFi driver was still transitioning; retrying immediately still triggered `sta is connecting, cannot set config`.
+- Removed early status-based retry; the manager now waits the full 15-second attempt timeout, powers WiFi off/on, then waits a 2-second cooldown before the next `WiFi.begin()`.
+- Verification:
+  - PASS — WiFi reconnect regression test.
+  - PASS — full host check: 93 passed, 2 skipped.
+  - PASS — Arduino compile: 1,104,712 bytes (84%), RAM 53,376 bytes (16%).
+  - NOT VERIFIED — upload/runtime until a USB ESP32 serial port is detected.
+
+### 2026-08-21 10:41 - Roll back WiFi change per user request
+
+- Reverted `main/wifi_manager.cpp/.h` and its WiFi contract test to the state before the latest WiFi-fix command.
+- Preserved all earlier fixes: recording default 5 seconds, audio QoS 1, pause silence flush, Telegram ONLINE/error deduplication, and Firestore metadata read/merge.
+- Verification after rollback:
+  - PASS — full host check: 92 passed, 2 skipped.
+  - PASS — Arduino compile: 1,104,452 bytes (84%), RAM 53,368 bytes (16%).
+  - PASS — `git diff --check`.
+  - WARNING — the rolled-back WiFi manager can reproduce the earlier `sta is connecting, cannot set config` race; this is intentional per user rollback request.
+
+### 2026-08-21 11:17 - Make recording duration explicit and verify Cloud list live
+
+- Firmware `START_RECORDING` now rejects a missing `duration_seconds` instead of silently falling back to the one-second default.
+- Firmware `audio/start` marker now carries the requested `duration_seconds`; Backend can validate the same duration contract.
+- Live `GET /api/v1/audio` returned HTTP 200 with Firestore-merged records (`cloud_synced=true`); a current manual INMP441 record was `5.088s`, while older/AI-window records remained sub-second.
+- Verification:
+  - PASS — full host check: 94 passed, 2 skipped.
+  - PASS — Arduino compile: 1,104,504 bytes (84%), RAM 53,368 bytes (16%).
+  - PASS — live Cloud/Web API read on the running Backend.
+  - NOT VERIFIED — upload of this newest firmware because Serial Monitor still holds COM7.

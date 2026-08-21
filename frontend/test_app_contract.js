@@ -12,3 +12,6 @@ assert.match(app, /updateRecordingCountdown/);
 assert.match(html, /id="recordCountdown"/);
 assert.match(app, /sendCommand\('resume'/);
 assert.match(html, /id="resume"/);
+assert.match(app, /local_available === false/);
+assert.match(app, /metadata Cloud/);
+assert.match(app, /option\.disabled = record\.local_available === false/);

@@ -1,17 +1,21 @@
 <!doctype html>
 <html lang="vi" data-theme="dark">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ESP32 Audio & Voice AI Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
+
 <body>
   <div class="app-wrapper">
-    
+
     <!-- Top Navigation Header -->
     <header class="app-header">
       <div class="brand-area">
@@ -36,7 +40,8 @@
         </div>
 
         <button id="themeToggle" class="icon-btn" type="button" title="Chuyển chế độ Sáng / Tối">
-          <svg class="sun-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="sun-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+            stroke-width="2">
             <circle cx="12" cy="12" r="5"></circle>
             <line x1="12" y1="1" x2="12" y2="3"></line>
             <line x1="12" y1="21" x2="12" y2="23"></line>
@@ -57,7 +62,7 @@
         <span class="page-nav-icon">🎛️</span>
         <div class="page-nav-text">
           <span class="page-nav-title">Trang 1: Bảng Điều Khiển & Thu Phát</span>
-          <span class="page-nav-desc">Micro INMP441, Web Mic, Player, TTS & Telemetry</span>
+          <span class="page-nav-desc">Micro INMP441, Web Mic, Player</span>
         </div>
       </button>
 
@@ -87,7 +92,7 @@
               <span class="card-icon mic-glow">🎙️</span>
               <div>
                 <h2 class="card-title">Trung tâm Micro & Nhận diện Giọng nói</h2>
-                <p class="card-desc">Ghi âm phần cứng INMP441 & Nhận diện trực tiếp qua Micro Trình duyệt</p>
+                <p class="card-desc">Ghi âm phần cứng INMP441 </p>
               </div>
             </div>
             <div class="tab-switcher">
@@ -145,7 +150,8 @@
                 </div>
                 <div class="ai-transcript-box">
                   <span class="transcript-icon">🗣️</span>
-                  <span class="transcript-text" id="aiTranscriptText">Nói vào Micro INMP441 ("Bật", "Tắt" để điều khiển đèn)...</span>
+                  <span class="transcript-text" id="aiTranscriptText">Nói vào Micro INMP441 ("Bật", "Tắt" để điều khiển
+                    đèn)...</span>
                 </div>
                 <div class="ai-meta-row">
                   <span id="aiCommandResult" class="meta-tag">Lệnh: Chưa có</span>
@@ -177,11 +183,14 @@
               <!-- Real-time Live Speech-to-Text Box -->
               <div class="live-transcript-card">
                 <div class="transcript-label">Văn bản nhận diện giọng nói thời gian thực (Live Transcription):</div>
-                <div id="webMicLiveText" class="live-text-stream" placeholder="Bấm Bật Micro và nói tiếng Việt, chữ sẽ xuất hiện trực tiếp tại đây...">Chữ nhận diện từ giọng nói sẽ hiển thị trực tiếp tại đây...</div>
+                <div id="webMicLiveText" class="live-text-stream"
+                  placeholder="Bấm Bật Micro và nói tiếng Việt, chữ sẽ xuất hiện trực tiếp tại đây...">Chữ nhận diện từ
+                  giọng nói sẽ hiển thị trực tiếp tại đây...</div>
               </div>
 
               <div class="webmic-quick-actions">
-                <button id="sendWebMicToTts" class="btn btn-outline small" type="button">Chuyển sang Text-to-Speech</button>
+                <button id="sendWebMicToTts" class="btn btn-outline small" type="button">Chuyển sang
+                  Text-to-Speech</button>
                 <button id="clearWebMicText" class="btn btn-outline small" type="button">Xóa văn bản</button>
               </div>
             </div>
@@ -301,7 +310,8 @@
             <span class="chip-label">Mẫu nhanh:</span>
             <button type="button" class="chip" data-text="Bật đèn phòng khách">💡 Bật đèn</button>
             <button type="button" class="chip" data-text="Tắt đèn phòng khách">🌑 Tắt đèn</button>
-            <button type="button" class="chip" data-text="Xin chào, hệ thống âm thanh ESP32 đã sẵn sàng phục vụ bạn!">👋 Chào hỏi</button>
+            <button type="button" class="chip" data-text="Xin chào, hệ thống âm thanh ESP32 đã sẵn sàng phục vụ bạn!">👋
+              Chào hỏi</button>
             <button type="button" class="chip" data-text="Cảnh báo: nhiệt độ phòng đang tăng cao!">⚠️ Cảnh báo</button>
           </div>
 
@@ -394,7 +404,8 @@
             <span class="card-icon">📚</span>
             <div>
               <h2 class="card-title">Thư viện Âm thanh & Chi tiết Thông số Kỹ thuật (Cloud Metadata)</h2>
-              <p class="card-desc">Hiển thị đầy đủ Sample Rate, Channels, Bits, Duration, Size, Filename và Nhận diện AI</p>
+              <p class="card-desc">Hiển thị đầy đủ Sample Rate, Channels, Bits, Duration, Size, Filename và Nhận diện AI
+              </p>
             </div>
           </div>
           <button id="refreshAudioBtn" class="btn btn-emerald small" type="button">🔄 Làm mới danh sách</button>
@@ -435,4 +446,5 @@
 
   <script src="/app.js"></script>
 </body>
+
 </html>
